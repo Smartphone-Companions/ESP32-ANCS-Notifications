@@ -3,14 +3,19 @@
 
 #include <Arduino.h>
 
+/**
+ * Arduino library for the ESP32, for receiving BLE notifications from another device.
+ *
+ * This class was designed with simplicity and ease-of-use in mind.
+ */
 class BLENotifications {
     public:
 		/**
 		 * State of the BLE connection.
 		 */
 		enum State {
-			StateConnected,
-			StateDisconnected
+			StateConnected, 	/// A device connected to the ESP32
+			StateDisconnected 	/// A device disconnected from the ESP32
 		};
 		
 		/**
@@ -41,6 +46,16 @@ class BLENotifications {
         void actionNegative();
 		
 		int getNumPending() const { return 0; }
+	
+	private:
+		void startAdvertising();	
+		
+	private:
+		ble_notifications_state_changed_t cbStateChanged;
+		
+		class BLEServer* server;
+		
+		friend class MyServerCallbacks; //Allow internal handlers to access the callbacks of the main class
 };
 
 #endif // ESP32NOTIFICATIONS_H_
