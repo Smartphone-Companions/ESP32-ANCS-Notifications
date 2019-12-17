@@ -3,9 +3,11 @@
 
 #include "esp32notifications.h"
 
-// Different hardware presets; feel free to add your own board layout.
-// You will need to add these hardware buttons to your dev board.
-// See the ESP32 pinout to choose a free GPIO pin.
+// Different hardware presets; uncomment the correct device.
+// Or feel free to add your own board layout for your specific hardware.
+// See the ESP32 pinout to choose a free GPIO pin on your hardware.
+
+// An inexpensive and easy-to build open-source smartwatch platform https://github.com/jhud/hackwatch
 #define HARDWARE_HACKWATCH
 
 #ifdef HARDWARE_HACKWATCH
@@ -19,6 +21,8 @@
 
 BLENotifications notifications;
 
+// This callback will be called when a Bluetooth LE connection is made or broken.
+// You can update the device's UI or take other action here.
 void onBLEStateChanged(BLENotifications::State state) {
   switch(state) {
       case BLENotifications::StateConnected:
@@ -32,11 +36,13 @@ void onBLEStateChanged(BLENotifications::State state) {
 }
 
 
+// A notification arrived from the mobile device, ie a social media notification or incoming call.
 void onNotificationArrived() {
      Serial.println("Got notification.");   
 }
 
 
+// Called once when the device first starts up
 void setup() {
   // Button configuration
   pinMode(BUTTON_A, INPUT_PULLUP);
@@ -51,14 +57,14 @@ void setup() {
     Serial.println("BLENotifications BLE ANCS on ESP32 Example");
     Serial.println("------------------------------------------");    
 
-    notifications.begin("deviceName");
+    // Set up the BLENotification library
+    notifications.begin("BLEConnection device name");
     notifications.setConnectionStateChangedCallback(onBLEStateChanged);
     notifications.setNotificationCallback(onNotificationArrived);
 }
 
 
 void checkButtons() {
-	
 	if (digitalRead(BUTTON_A) == LOW) {
 		Serial.println("Positive action."); 
     	notifications.actionPositive();

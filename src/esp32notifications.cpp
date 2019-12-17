@@ -1,6 +1,8 @@
 // Based on https://github.com/espressif/esp-idf/tree/master/examples/bluetooth/bluedroid/ble/ble_ancs
 
 #include "esp32notifications.h"
+#include "ancs_ble_client.h"
+#include "ble_security.h"
 
 #include "BLEAddress.h"
 #include "BLEDevice.h"
@@ -13,37 +15,7 @@
 
 static char LOG_TAG[] = "BLENotifications";
 
-class MySecurity : public BLESecurityCallbacks {
-
-    uint32_t onPassKeyRequest(){
-        ESP_LOGI(LOG_TAG, "PassKeyRequest");
-        return 123456;
-    }
-
-    void onPassKeyNotify(uint32_t pass_key){
-        ESP_LOGI(LOG_TAG, "On passkey Notify number:%d", pass_key);
-    }
-
-    bool onSecurityRequest(){
-        ESP_LOGI(LOG_TAG, "On Security Request");
-        return true;
-    }
-    
-    bool onConfirmPIN(unsigned int){
-        ESP_LOGI(LOG_TAG, "On Confrimed Pin Request");
-        return true;
-    }
-
-    void onAuthenticationComplete(esp_ble_auth_cmpl_t cmpl){
-        ESP_LOGI(LOG_TAG, "Starting BLE work!");
-        if(cmpl.success){
-            uint16_t length;
-            esp_ble_gap_get_whitelist_size(&length);
-            ESP_LOGD(LOG_TAG, "size: %d", length);
-        }
-    }
-};
-
+extern const BLEUUID ancsServiceUUID;
 
 class MyServerCallbacks: public BLEServerCallbacks {
 private:
@@ -64,22 +36,28 @@ public:
         Serial.println("**Device connected**");
 		gatts_connect_evt_param * connectEventParam = (gatts_connect_evt_param *) param;
         Serial.println(BLEAddress(connectEventParam->remote_bda).toString().c_str());
-        /*MyClient* pMyClient = new MyClient();
-        pMyClient->setStackSize(18000);
-        pMyClient->start(new BLEAddress(BLEDevice::m_remoteBda));*/ // @todo - memory leak?
+        //ANCSBLEClient* pMyClient = new ANCSBLEClient(); // @todo memory leak?
+        //pMyClient->setStackSize(18000); // @todo not needed?
+		ancs_ble_client_init(new BLEAddress(connectEventParam->remote_bda)); // @todo - memory leak?
+		
+		delay(1000);
+		
+		// Grab any pending notifications as a test
+		ancs_ble_client_update();
+		
         if (instance->cbStateChanged) {
         	instance->cbStateChanged(BLENotifications::StateConnected);
         }
     };
 
-void onDisconnect(BLEServer* pServer) {
-		ESP_LOGI(LOG_TAG, "Device disconnected");
-        Serial.println("**Device disconnected**");
-        if (instance->cbStateChanged) {
-        	instance->cbStateChanged(BLENotifications::StateDisconnected);
-        }
-		// @todo, disconnect, free stack?
-    }
+	void onDisconnect(BLEServer* pServer) {
+			ESP_LOGI(LOG_TAG, "Device disconnected");
+	        Serial.println("**Device disconnected**");
+	        if (instance->cbStateChanged) {
+	        	instance->cbStateChanged(BLENotifications::StateDisconnected);
+	        }
+			// @todo, disconnect, free stack?
+	    }
 };
 
 
@@ -96,7 +74,6 @@ bool BLENotifications::begin(const char * name) {
     server = BLEDevice::createServer();
     server->setCallbacks(new MyServerCallbacks(this));
     BLEDevice::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT);
-    BLEDevice::setSecurityCallbacks(new MySecurity());
 	
 	startAdvertising();
 }
@@ -122,11 +99,13 @@ void BLENotifications::actionNegative() {
 }
 
 void BLENotifications::startAdvertising() {
-    // Start soliciting ANCS
+    BLEDevice::setSecurityCallbacks(new NotificationSecurityCallbacks()); // @todo memory leak?
+	
+    // Start soliciting the Apple ANCS service and make the device visible to searches on iOS (from Apple ANCS documentation)
     BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
     BLEAdvertisementData oAdvertisementData = BLEAdvertisementData();
     oAdvertisementData.setFlags(0x01);
-    oAdvertisementData.setServiceSolicitation(BLEUUID("7905F431-B5CE-4E99-A40F-4B1E122D00D0"));
+    oAdvertisementData.setServiceSolicitation(getAncsServiceUUID()); 
     pAdvertising->setAdvertisementData(oAdvertisementData);        
 
     // Set security
