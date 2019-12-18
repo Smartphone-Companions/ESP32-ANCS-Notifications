@@ -3,10 +3,13 @@
 
 #include <Arduino.h>
 
+#include "ble_notification.h"
+
 /**
  * Arduino library for the ESP32, for receiving BLE notifications from another device.
  *
  * This class was designed with simplicity and ease-of-use in mind.
+ * This library supports ESP32 debugging output: in the Arduino IDE, change Tools/Core Debug Level.
  */
 class BLENotifications {
     public:
@@ -23,11 +26,6 @@ class BLENotifications {
 		 * Use this to modify the UI to notify the user if a connection is available.
 		 */
         typedef void (*ble_notifications_state_changed_t)(State state);
-		
-		/**
-		 * Callback for when a notification arrives.
-		 */
-		typedef void (*ble_notification_arrived_t)();
 
 
     public:
@@ -52,6 +50,7 @@ class BLENotifications {
 		
 	private:
 		ble_notifications_state_changed_t cbStateChanged;
+		ble_notification_arrived_t cbNotification;
 		
 		class BLEServer* server;
 		

@@ -22,7 +22,7 @@ bool NotificationSecurityCallbacks::onSecurityRequest(){
 }
 
 bool NotificationSecurityCallbacks::onConfirmPIN(unsigned int){
-    ESP_LOGI(LOG_TAG, "On Confrimed Pin Request");
+    ESP_LOGI(LOG_TAG, "On Confirmed Pin Request");
     return true;
 }
 

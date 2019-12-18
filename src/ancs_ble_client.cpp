@@ -13,7 +13,7 @@
 
 #include <Arduino.h> // Only for development
 
-static char LOG_TAG[] = "ancs_ble_client";
+static char LOG_TAG[] = "ANCSBLEClient";
 
 // Fixed service IDs for the Apple ANCS service
 const BLEUUID notificationSourceCharacteristicUUID("9FBF120D-6301-42D9-8C58-25E699A21DBD");
@@ -22,13 +22,10 @@ const BLEUUID dataSourceCharacteristicUUID("22EAC6E9-24D6-4BB5-BE44-B36ACE7C7BFB
 const BLEUUID ancsServiceUUID("7905F431-B5CE-4E99-A40F-4B1E122D00D0");
 
 
-// @todo - make into class or remove global data
-uint8_t latestMessageID[4]; 
-boolean pendingNotification = false;
-BLERemoteCharacteristic* pControlPointCharacteristic;
-
 #define MESSAGE_TITLE 1
 #define MESSAGE_BODY 3
+
+static ANCSBLEClient * sharedInstance;
 
 static void dataSourceNotifyCallback(
   BLERemoteCharacteristic* pDataSourceCharacteristic,
@@ -61,15 +58,16 @@ static void notificationSourceNotifyCallback(
   size_t length,
   bool isNotify)
 {
+	ESP_LOGD(LOG_TAG, "notificationSourceNotifyCallback");
     if(pData[0]==0)
     {
       
         Serial.println("New notification!");
         //Serial.println(pNotificationSourceCharacteristic->getUUID().toString().c_str());
-        latestMessageID[0] = pData[4];
-        latestMessageID[1] = pData[5];
-        latestMessageID[2] = pData[6];
-        latestMessageID[3] = pData[7];
+        sharedInstance->latestMessageID[0] = pData[4];
+        sharedInstance->latestMessageID[1] = pData[5];
+        sharedInstance->latestMessageID[2] = pData[6];
+        sharedInstance->latestMessageID[3] = pData[7];
         
         switch(pData[2])
         {
@@ -113,17 +111,18 @@ static void notificationSourceNotifyCallback(
             break;
         }
     }
-    pendingNotification = true;
+    sharedInstance->pendingNotification = true;
 }
 
+ANCSBLEClient::ANCSBLEClient()
+	 : notificationCB(nullptr) {
+	assert(sharedInstance == nullptr);
+	sharedInstance = this;  
+}
 
-
-
-/**
- * Become a BLE client to a remote BLE server.  We are passed in the address of the BLE server
- * as the input parameter when the task is created.
- */
-void ancs_ble_client_init(const BLEAddress* address) { 
+void ANCSBLEClient::startClientTask(void * params) {
+	ESP_LOGD(LOG_TAG, "Starting client");
+		const BLEAddress* address = (BLEAddress*)params;
         BLEClient*  pClient  = BLEDevice::createClient();
         BLEDevice::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT);
         BLEDevice::setSecurityCallbacks(new NotificationSecurityCallbacks()); // @todo memory leak?
@@ -149,8 +148,8 @@ void ancs_ble_client_init(const BLEAddress* address) {
             return;
         }        
         // Obtain a reference to the characteristic in the service of the remote BLE server.
-        pControlPointCharacteristic = pAncsService->getCharacteristic(controlPointCharacteristicUUID);
-        if (pControlPointCharacteristic == nullptr) {
+        sharedInstance->pControlPointCharacteristic = pAncsService->getCharacteristic(controlPointCharacteristicUUID);
+        if (sharedInstance->pControlPointCharacteristic == nullptr) {
             ESP_LOGD(LOG_TAG, "Failed to find characteristic UUID: controlPointCharacteristicUUID");
             return;
         }        
@@ -165,14 +164,27 @@ void ancs_ble_client_init(const BLEAddress* address) {
         pDataSourceCharacteristic->getDescriptor(BLEUUID((uint16_t)0x2902))->writeValue((uint8_t*)v,2,true);
         pNotificationSourceCharacteristic->registerForNotify(notificationSourceNotifyCallback);
         pNotificationSourceCharacteristic->getDescriptor(BLEUUID((uint16_t)0x2902))->writeValue((uint8_t*)v,2,true);
-        /** END ANCS SERVICE **/    
-    }
 
-	BLEUUID getAncsServiceUUID() {
-		return ancsServiceUUID;
-	}
+	    while (1)
+	    {
+	      delay(1000);
+		  ESP_LOGD(LOG_TAG, "Waiting...");
+		  sharedInstance->update();
+	    }
+}
 
-void ancs_ble_client_update() { 
+
+BLEUUID ANCSBLEClient::getAncsServiceUUID() {
+	return ancsServiceUUID;
+}
+
+
+void ANCSBLEClient::setNotificationArrivedCallback(ble_notification_arrived_t cbNotification) {
+	notificationCB = cbNotification;
+}
+
+
+void ANCSBLEClient::update() {
     if(pendingNotification == true){
         // CommandID: CommandIDGetNotificationAttributes
         // 32bit uid
@@ -187,6 +199,9 @@ void ancs_ble_client_update() {
         const uint8_t vDate[]={0x0,   latestMessageID[0],latestMessageID[1],latestMessageID[2],latestMessageID[3],   0x5};
         pControlPointCharacteristic->writeValue((uint8_t*)vDate,6,true);
         pendingNotification = false;
+		if (notificationCB != nullptr) {
+			notificationCB();
+		}
     }
     delay(100); //does not work without small delay
 }

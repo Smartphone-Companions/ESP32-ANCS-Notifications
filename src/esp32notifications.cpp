@@ -1,5 +1,7 @@
 // Based on https://github.com/espressif/esp-idf/tree/master/examples/bluetooth/bluedroid/ble/ble_ancs
 
+#define LOG_LOCAL_LEVEL ESP_LOG_VERBOSE
+
 #include "esp32notifications.h"
 #include "ancs_ble_client.h"
 #include "ble_security.h"
@@ -33,17 +35,18 @@ public:
 	
     void onConnect(BLEServer* pServer, esp_ble_gatts_cb_param_t *param) {
 		ESP_LOGI(LOG_TAG, "Device connected");
-        Serial.println("**Device connected**");
 		gatts_connect_evt_param * connectEventParam = (gatts_connect_evt_param *) param;
-        Serial.println(BLEAddress(connectEventParam->remote_bda).toString().c_str());
-        //ANCSBLEClient* pMyClient = new ANCSBLEClient(); // @todo memory leak?
+        ANCSBLEClient* pMyClient = new ANCSBLEClient(); // @todo memory leaks?
+		pMyClient->setNotificationArrivedCallback(instance->cbNotification);
         //pMyClient->setStackSize(18000); // @todo not needed?
-		ancs_ble_client_init(new BLEAddress(connectEventParam->remote_bda)); // @todo - memory leak?
+	    ::xTaskCreatePinnedToCore(&ANCSBLEClient::startClientTask, "ClientTask", 10000, new BLEAddress(connectEventParam->remote_bda), 5, &pMyClient->clientTaskHandle, 0);
 		
 		delay(1000);
 		
+		ESP_LOGI(LOG_TAG, "Set up client");
+		
 		// Grab any pending notifications as a test
-		ancs_ble_client_update();
+		pMyClient->update();
 		
         if (instance->cbStateChanged) {
         	instance->cbStateChanged(BLENotifications::StateConnected);
@@ -84,8 +87,8 @@ void BLENotifications::setConnectionStateChangedCallback(ble_notifications_state
 }
 
 
-void BLENotifications::setNotificationCallback(ble_notification_arrived_t) {
-	
+void BLENotifications::setNotificationCallback(ble_notification_arrived_t callback) {
+	cbNotification = callback;
 }
 
 
@@ -105,7 +108,7 @@ void BLENotifications::startAdvertising() {
     BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
     BLEAdvertisementData oAdvertisementData = BLEAdvertisementData();
     oAdvertisementData.setFlags(0x01);
-    oAdvertisementData.setServiceSolicitation(getAncsServiceUUID()); 
+    oAdvertisementData.setServiceSolicitation(ANCSBLEClient::getAncsServiceUUID()); 
     pAdvertising->setAdvertisementData(oAdvertisementData);        
 
     // Set security
