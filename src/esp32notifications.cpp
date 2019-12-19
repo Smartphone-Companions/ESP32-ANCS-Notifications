@@ -70,7 +70,23 @@ BLENotifications::BLENotifications()
 	
 }
 
-
+const char * BLENotifications::getNotificationCategoryDescription(NotificationCategory category) const {
+	switch(category) { 
+    case CategoryIDOther: return "other";
+	case CategoryIDIncomingCall: return "incoming call";
+	case CategoryIDMissedCall: return "missed call";
+	case CategoryIDVoicemail: return "voicemail";
+	case CategoryIDSocial: return "social";
+	case CategoryIDSchedule: return "schedule";
+	case CategoryIDEmail: return "email";
+	case CategoryIDNews: return "news";
+	case CategoryIDHealthAndFitness: return "health and fitness";
+	case CategoryIDBusinessAndFinance: return "business and finance";
+	case CategoryIDLocation: return "location";
+	case CategoryIDEntertainment: return "entertainment";
+	default: return "unknown";
+}
+}
 
 bool BLENotifications::begin(const char * name) {
     BLEDevice::init(name);

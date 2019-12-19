@@ -30,12 +30,12 @@ public:
 public:
 	uint8_t latestMessageID[4]; // needs to be public so the CBs can access it
 	bool pendingNotification = false;
+	ble_notification_arrived_t notificationCB;
 	xTaskHandle clientTaskHandle;
 	void update();
 	
 private:
 	BLERemoteCharacteristic* pControlPointCharacteristic;
-	ble_notification_arrived_t notificationCB;
 };
 
 #endif // ANCS_BLE_CLIENT_H_

@@ -32,25 +32,26 @@ static void dataSourceNotifyCallback(
   uint8_t* pData,
   size_t length,
   bool isNotify) {
-    Serial.print("Notify callback for characteristic ");
-    Serial.print(pDataSourceCharacteristic->getUUID().toString().c_str());
-    Serial.print(" of data length ");
-    Serial.println(length);
+    ESP_LOGD(LOG_TAG, "Notify callback for characteristic ");
+    ESP_LOGD(LOG_TAG, "%s", pDataSourceCharacteristic->getUUID().toString().c_str());
+    ESP_LOGD(LOG_TAG, " of data length %d", length);
+
     for(int i = 0; i < length; i++){
         if(i > 7){
-            Serial.write(pData[i]);
+            ESP_LOGD(LOG_TAG, "%02x. ", pData[i]);
         }
         else{
-            Serial.print(pData[i], HEX);
-            Serial.print(" ");
+            ESP_LOGD(LOG_TAG, "%02x ", pData[i]);
         }
     }
-    Serial.println();
-	if ((pData[5] == MESSAGE_BODY || pData[5] == MESSAGE_TITLE) /*&& onMsgReceived*/) {
+	
+	if ((pData[5] == MESSAGE_BODY || pData[5] == MESSAGE_TITLE) && sharedInstance->notificationCB) {
 		pData[length]=0;
-		//onMsgReceived(pData[5], (char*)pData+8); // @todo send msg received cb
+		ESP_LOGD(LOG_TAG, "Doing callback");
+		sharedInstance->notificationCB(CategoryIDBusinessAndFinance, (char*)pData+8); // @todo data persistance
 	}
 }
+
 
 static void notificationSourceNotifyCallback(
   BLERemoteCharacteristic* pNotificationSourceCharacteristic,
@@ -62,54 +63,14 @@ static void notificationSourceNotifyCallback(
     if(pData[0]==0)
     {
       
-        Serial.println("New notification!");
+        ESP_LOGD(LOG_TAG, "New notification!");
         //Serial.println(pNotificationSourceCharacteristic->getUUID().toString().c_str());
         sharedInstance->latestMessageID[0] = pData[4];
         sharedInstance->latestMessageID[1] = pData[5];
         sharedInstance->latestMessageID[2] = pData[6];
         sharedInstance->latestMessageID[3] = pData[7];
         
-        switch(pData[2])
-        {
-            case 0:
-                Serial.println("Category: Other");
-            break;
-            case 1:
-                Serial.println("Category: Incoming call");
-            break;
-            case 2:
-                Serial.println("Category: Missed call");
-            break;
-            case 3:
-                Serial.println("Category: Voicemail");
-            break;
-            case 4:
-                Serial.println("Category: Social");
-            break;
-            case 5:
-                Serial.println("Category: Schedule");
-            break;
-            case 6:
-                Serial.println("Category: Email");
-            break;
-            case 7:
-                Serial.println("Category: News");
-            break;
-            case 8:
-                Serial.println("Category: Health");
-            break;
-            case 9:
-                Serial.println("Category: Business");
-            break;
-            case 10:
-                Serial.println("Category: Location");
-            break;
-            case 11:
-                Serial.println("Category: Entertainment");
-            break;
-            default:
-            break;
-        }
+        ESP_LOGD(LOG_TAG, "Notification type ID (see ANCS docs or higher level functions): %d", (pData[2]));
     }
     sharedInstance->pendingNotification = true;
 }
@@ -168,7 +129,6 @@ void ANCSBLEClient::startClientTask(void * params) {
 	    while (1)
 	    {
 	      delay(1000);
-		  ESP_LOGD(LOG_TAG, "Waiting...");
 		  sharedInstance->update();
 	    }
 }
@@ -199,9 +159,6 @@ void ANCSBLEClient::update() {
         const uint8_t vDate[]={0x0,   latestMessageID[0],latestMessageID[1],latestMessageID[2],latestMessageID[3],   0x5};
         pControlPointCharacteristic->writeValue((uint8_t*)vDate,6,true);
         pendingNotification = false;
-		if (notificationCB != nullptr) {
-			notificationCB();
-		}
     }
     delay(100); //does not work without small delay
 }

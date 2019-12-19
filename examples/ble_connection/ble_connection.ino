@@ -3,6 +3,8 @@
 
 #include "esp32notifications.h"
 
+
+/////
 // Different hardware presets; uncomment the correct device.
 // Or feel free to add your own board layout for your specific hardware.
 // See the ESP32 pinout to choose a free GPIO pin on your hardware.
@@ -19,6 +21,7 @@
 #endif
 
 
+// Create an interface to the BLE notification functionality
 BLENotifications notifications;
 
 // This callback will be called when a Bluetooth LE connection is made or broken.
@@ -26,25 +29,30 @@ BLENotifications notifications;
 void onBLEStateChanged(BLENotifications::State state) {
   switch(state) {
       case BLENotifications::StateConnected:
-          Serial.println("StateConnected"); 
+          Serial.println("StateConnected - connected to a phone or tablet"); 
           break;
 
       case BLENotifications::StateDisconnected:
-          Serial.println("StateDisconnected"); 
+          Serial.println("StateDisconnected - disconnected from a phone or tablet"); 
           break; 
   }
 }
 
 
 // A notification arrived from the mobile device, ie a social media notification or incoming call.
-void onNotificationArrived() {
-     Serial.println("Got notification.");   
+void onNotificationArrived(NotificationCategory category, char * text) {
+	// category: ie social media, incoming call
+	// text: the actual text of the notification, ie "hi there!"
+     Serial.print("Got notification: ");   
+	 //Serial.print(notifications.getNotificationCategoryDescription(category));
+	 //Serial.println(text);   
 }
 
 
-// Called once when the device first starts up
+// Standard Arduino function which is called once when the device first starts up
 void setup() {
-  // Button configuration
+  // Button configuration. It is usual to have buttons configured as INPUT_PULLUP in the hardware design,
+  // but check the details for your specific device 
   pinMode(BUTTON_A, INPUT_PULLUP);
   pinMode(BUTTON_B, INPUT_PULLUP);
   pinMode(BUTTON_C, INPUT_PULLUP);

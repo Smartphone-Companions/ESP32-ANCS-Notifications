@@ -45,6 +45,11 @@ class BLENotifications {
 		
 		int getNumPending() const { return 0; }
 	
+		/** 
+		 * Given a category, return a description of the category in English
+		*/
+		const char * getNotificationCategoryDescription(NotificationCategory category) const;
+	
 	private:
 		void startAdvertising();	
 		
