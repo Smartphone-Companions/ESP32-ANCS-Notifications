@@ -183,11 +183,11 @@ void ANCSBLEClient::onDataSourceNotify(
           break;
       }
       if (!notification->title.empty() && !notification->message.empty()) {
-        notification->isComplete = true;
-		if (notificationCB) {
+		if (notificationCB && notification->isComplete == false) {
 			ESP_LOGI(LOG_TAG, "got a full notification: %s - %s ", notification->title.c_str(), notification->message.c_str());
 			notificationCB(notification);
 		}
+		notification->isComplete = true;
       }
 }
 
