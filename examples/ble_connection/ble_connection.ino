@@ -40,12 +40,13 @@ void onBLEStateChanged(BLENotifications::State state) {
 
 
 // A notification arrived from the mobile device, ie a social media notification or incoming call.
-void onNotificationArrived(NotificationCategory category, char * text) {
-	// category: ie social media, incoming call
-	// text: the actual text of the notification, ie "hi there!"
+void onNotificationArrived(const Notification * notification) {
+
      Serial.print("Got notification: ");   
-	 //Serial.print(notifications.getNotificationCategoryDescription(category));
-	 //Serial.println(text);   
+     Serial.println(notification->title.c_str());
+     Serial.println(notification->message.c_str());
+     Serial.println(notification->type.c_str());
+   //Serial.println();   
 }
 
 
@@ -73,14 +74,14 @@ void setup() {
 
 
 void checkButtons() {
-	if (digitalRead(BUTTON_A) == LOW) {
-		Serial.println("Positive action."); 
-    	notifications.actionPositive();
-	}
-	else if (digitalRead(BUTTON_C) == LOW) {
-		Serial.println("Negative action."); 
-    	notifications.actionNegative();
-	}
+  if (digitalRead(BUTTON_A) == LOW) {
+    Serial.println("Positive action."); 
+      notifications.actionPositive();
+  }
+  else if (digitalRead(BUTTON_C) == LOW) {
+    Serial.println("Negative action."); 
+      notifications.actionNegative();
+  }
 }
 
 void loop() {

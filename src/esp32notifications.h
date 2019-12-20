@@ -58,6 +58,7 @@ class BLENotifications {
 		ble_notification_arrived_t cbNotification;
 		
 		class BLEServer* server;
+		class ANCSBLEClient* client;
 		
 		friend class MyServerCallbacks; //Allow internal handlers to access the callbacks of the main class
 };

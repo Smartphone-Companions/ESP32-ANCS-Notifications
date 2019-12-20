@@ -20,3 +20,7 @@ Then you should see the examples and be able to include the library in your proj
 ## Usage
 
 See the ble_connection example.
+
+## History / Acknowledgements
+
+Based on the work of CarWatch, Hackwatch, and S-March. This project was created to hide the complicated BLE notification internals behind a standard, easy-to-use Arduino library.

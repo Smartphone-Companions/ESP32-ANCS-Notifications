@@ -1,4 +1,3 @@
-// Based on https://github.com/espressif/esp-idf/tree/master/examples/bluetooth/bluedroid/ble/ble_ancs
 
 #define LOG_LOCAL_LEVEL ESP_LOG_VERBOSE
 
@@ -36,17 +35,14 @@ public:
     void onConnect(BLEServer* pServer, esp_ble_gatts_cb_param_t *param) {
 		ESP_LOGI(LOG_TAG, "Device connected");
 		gatts_connect_evt_param * connectEventParam = (gatts_connect_evt_param *) param;
-        ANCSBLEClient* pMyClient = new ANCSBLEClient(); // @todo memory leaks?
-		pMyClient->setNotificationArrivedCallback(instance->cbNotification);
+        instance->client = new ANCSBLEClient(); // @todo memory leaks?
+		instance->client->setNotificationArrivedCallback(instance->cbNotification);
         //pMyClient->setStackSize(18000); // @todo not needed?
-	    ::xTaskCreatePinnedToCore(&ANCSBLEClient::startClientTask, "ClientTask", 10000, new BLEAddress(connectEventParam->remote_bda), 5, &pMyClient->clientTaskHandle, 0);
+	    ::xTaskCreatePinnedToCore(&ANCSBLEClient::startClientTask, "ClientTask", 10000, new BLEAddress(connectEventParam->remote_bda), 5, &instance->client->clientTaskHandle, 0);
 		
 		delay(1000);
 		
 		ESP_LOGI(LOG_TAG, "Set up client");
-		
-		// Grab any pending notifications as a test
-		pMyClient->update();
 		
         if (instance->cbStateChanged) {
         	instance->cbStateChanged(BLENotifications::StateConnected);
@@ -54,8 +50,9 @@ public:
     };
 
 	void onDisconnect(BLEServer* pServer) {
+		  ::vTaskDelete(instance->client->clientTaskHandle);
+		  instance->client->clientTaskHandle = nullptr;
 			ESP_LOGI(LOG_TAG, "Device disconnected");
-	        Serial.println("**Device disconnected**");
 	        if (instance->cbStateChanged) {
 	        	instance->cbStateChanged(BLENotifications::StateDisconnected);
 	        }

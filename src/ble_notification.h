@@ -1,5 +1,9 @@
+// Based on CarWatch project
+
 #ifndef BLE_NOTIFICATION_H_
 #define BLE_NOTIFICATION_H_
+
+#include <string>
 
 /**
  * Notification category, based on ANCS values
@@ -20,11 +24,61 @@ typedef enum
     CategoryIDEntertainment = 11
 } NotificationCategory;
 
+namespace ANCS { // Enums specific to ANCS. The others we can reuse for Android
+
+typedef enum
+{
+    EventIDNotificationAdded = 0,
+    EventIDNotificationModified = 1,
+    EventIDNotificationRemoved = 2
+} event_id_t;
+
+typedef enum
+{
+    EventFlagSilent = (1 << 0),
+    EventFlagImportant = (1 << 1),
+    EventFlagPreExisting = (1 << 2),
+    EventFlagPositiveAction = (1 << 3),
+    EventFlagNegativeAction = (1 << 4)
+} event_flags_t;
+
+typedef enum
+{
+    CommandIDGetNotificationAttributes = 0,
+    CommandIDGetAppAttributes = 1,
+    CommandIDPerformNotificationAction = 2
+} command_id_t;
+
+
+typedef enum
+{
+    NotificationAttributeIDAppIdentifier = 0, /**< ie com.facebook.Messenger */
+    NotificationAttributeIDTitle = 1,    // (Needs to be followed by a 2-bytes max length parameter)
+    NotificationAttributeIDSubtitle = 2, // (Needs to be followed by a 2-bytes max length parameter)
+    NotificationAttributeIDMessage = 3,  // (Needs to be followed by a 2-bytes max length parameter)
+    NotificationAttributeIDMessageSize = 4,
+    NotificationAttributeIDDate = 5,
+    NotificationAttributeIDPositiveActionLabel = 6,
+    NotificationAttributeIDNegativeActionLabel = 7
+} notification_attribute_id_t;
+
+};
+
+struct Notification {
+    std::string title;
+    std::string message;
+    std::string type;
+    time_t time;
+    uint32_t uuid = 0;
+    bool showed = false;
+    bool isComplete = false;
+};
+
 /**
  * Callback for when a notification arrives.
- * @param category What sort of notification it is.
- * @param text the text message of the notification. 
+ * @param notification The notification that just arrived.
  */
-typedef void (*ble_notification_arrived_t)(NotificationCategory category, char * text);
+typedef void (*ble_notification_arrived_t)(const Notification * notification);
+
 
 #endif
