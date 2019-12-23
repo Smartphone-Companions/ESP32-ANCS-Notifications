@@ -37,7 +37,7 @@ public:
 		gatts_connect_evt_param * connectEventParam = (gatts_connect_evt_param *) param;
         instance->client = new ANCSBLEClient(); // @todo memory leaks?
 		instance->client->setNotificationArrivedCallback(instance->cbNotification);
-        //pMyClient->setStackSize(18000); // @todo not needed?
+		//instance->client->setStackSize(50000);
 	    ::xTaskCreatePinnedToCore(&ANCSBLEClient::startClientTask, "ClientTask", 10000, new BLEAddress(connectEventParam->remote_bda), 5, &instance->client->clientTaskHandle, 0);
 		
 		delay(1000);
@@ -56,13 +56,15 @@ public:
 	        if (instance->cbStateChanged) {
 	        	instance->cbStateChanged(BLENotifications::StateDisconnected);
 	        }
-			// @todo, disconnect, free stack?
+			delete instance->client;
+			instance->client = nullptr;
 	    }
 };
 
 
 BLENotifications::BLENotifications()
-	 : cbStateChanged(0)
+	 : cbStateChanged(nullptr)
+	 , client(nullptr)
 {
 	
 }
@@ -86,12 +88,19 @@ const char * BLENotifications::getNotificationCategoryDescription(NotificationCa
 }
 
 bool BLENotifications::begin(const char * name) {
+	ESP_LOGI(LOG_TAG, "begin()");
     BLEDevice::init(name);
     server = BLEDevice::createServer();
     server->setCallbacks(new MyServerCallbacks(this));
     BLEDevice::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT);
+	BLEDevice::setSecurityCallbacks(new NotificationSecurityCallbacks()); // @todo memory leak?
 	
 	startAdvertising();
+}
+
+bool BLENotifications::stop() {
+	ESP_LOGI(LOG_TAG, "stop()");
+	BLEDevice::deinit(false);	
 }
 
 
@@ -106,7 +115,7 @@ void BLENotifications::setNotificationCallback(ble_notification_arrived_t callba
 
 
 void BLENotifications::actionPositive() {
-	
+	ESP_LOGI(LOG_TAG, "actionPositive()");
 }
 
 
@@ -115,10 +124,14 @@ void BLENotifications::actionNegative() {
 }
 
 void BLENotifications::startAdvertising() {
-    BLEDevice::setSecurityCallbacks(new NotificationSecurityCallbacks()); // @todo memory leak?
+	ESP_LOGI(LOG_TAG, "startAdvertising()");
 	
     // Start soliciting the Apple ANCS service and make the device visible to searches on iOS (from Apple ANCS documentation)
     BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+	
+	// Stop it in case it is already running
+	pAdvertising->stop();
+	
     BLEAdvertisementData oAdvertisementData = BLEAdvertisementData();
     oAdvertisementData.setFlags(0x01);
     oAdvertisementData.setServiceSolicitation(ANCSBLEClient::getAncsServiceUUID()); 

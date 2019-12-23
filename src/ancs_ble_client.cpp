@@ -54,6 +54,11 @@ ANCSBLEClient::ANCSBLEClient()
 	  notificationQueue = new ANCSNotificationQueue();
 }
 
+
+ANCSBLEClient::~ANCSBLEClient() {
+	sharedInstance = nullptr;
+}
+
 void ANCSBLEClient::startClientTask(void * params) {
 	ESP_LOGD(LOG_TAG, "Starting client");
 		const BLEAddress* address = (BLEAddress*)params;

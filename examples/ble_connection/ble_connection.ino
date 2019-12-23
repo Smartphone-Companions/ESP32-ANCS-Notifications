@@ -1,8 +1,11 @@
 // @author James Hudson bugs.feedback.whatever@gmail.com
 // @todo license text and header - please see github project for license
 
-#include "esp32notifications.h"
+// A simple example program to retrieve notifications from your device, and output them to the Serial console.
 
+
+// Header for this library, from https://www.github.com/Smartphone-Companions/ESP32NotificationsLib.git
+#include "esp32notifications.h"
 
 /////
 // Different hardware presets; uncomment the correct device.
@@ -20,12 +23,11 @@
     #error Hardware buttons not supported!
 #endif
 
-
 // Create an interface to the BLE notification functionality
 BLENotifications notifications;
 
 // This callback will be called when a Bluetooth LE connection is made or broken.
-// You can update the device's UI or take other action here.
+// You can update the ESP 32's UI or take other action here.
 void onBLEStateChanged(BLENotifications::State state) {
   switch(state) {
       case BLENotifications::StateConnected:
@@ -34,6 +36,10 @@ void onBLEStateChanged(BLENotifications::State state) {
 
       case BLENotifications::StateDisconnected:
           Serial.println("StateDisconnected - disconnected from a phone or tablet"); 
+		  /* We need to startAdvertising on disconnection, otherwise the ESP 32 will now be invisible.
+		  IMO it would make sense to put this in the library to happen automatically, but some people in the Espressif forums
+		  were requesting that they would like manual control over re-advertising.*/
+		  notifications.startAdvertising(); 
           break; 
   }
 }
@@ -45,8 +51,7 @@ void onNotificationArrived(const Notification * notification) {
      Serial.print("Got notification: ");   
      Serial.println(notification->title.c_str());
      Serial.println(notification->message.c_str());
-     Serial.println(notification->type.c_str());
-   //Serial.println();   
+     Serial.println(notification->type.c_str());  
 }
 
 
@@ -84,7 +89,9 @@ void checkButtons() {
   }
 }
 
-void loop() {
+
+// Standard Arduino function that is called in an endless loop after setup
+void loop() {	
     if (notifications.getNumPending() == 0) {
         return;
     }

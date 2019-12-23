@@ -17,8 +17,8 @@ class BLENotifications {
 		 * State of the BLE connection.
 		 */
 		enum State {
-			StateConnected, 	/// A device connected to the ESP32
-			StateDisconnected 	/// A device disconnected from the ESP32
+			StateConnected, 	/**< A device connected to the ESP32. */
+			StateDisconnected 	/**< A device disconnected from the ESP32. Note that you should call startAdvertising after this message.*/
 		};
 		
 		/**
@@ -33,9 +33,24 @@ class BLENotifications {
 		
 		/**
 		 * Setup the device to receive BLE notifications.
+		 * Will also automatically start advertising.
 		 * @param name the device name, as it will appear in a BLE scan.
 		 */
         bool begin(const char * name);
+		
+		/**
+		 * Make this device visible in scans as available for connection.
+		 * Will stop the current advertisement if it is running.
+		 */
+		void startAdvertising();
+		
+		/**
+		 * Shutdown BLE and free memory.
+		 * Note that currently the BLE library internals do not seem to restore state properly, so the BLE library
+		 * cannot be used after a stop.
+		 * 
+		 */
+		bool stop();
 		
         void setConnectionStateChangedCallback(ble_notifications_state_changed_t);
         void setNotificationCallback(ble_notification_arrived_t);
@@ -49,9 +64,7 @@ class BLENotifications {
 		 * Given a category, return a description of the category in English
 		*/
 		const char * getNotificationCategoryDescription(NotificationCategory category) const;
-	
-	private:
-		void startAdvertising();	
+
 		
 	private:
 		ble_notifications_state_changed_t cbStateChanged;

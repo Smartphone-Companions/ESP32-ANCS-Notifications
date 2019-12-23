@@ -1,6 +1,15 @@
 # ESP32NotificationsLib
 Easy-to-use Arduino library for interfacing an ESP 32 with Bluetooth LE mobile device notifications.
 
+This library is designed to follow the standard Arduino library style, and be as easy to use and clear as possible for non-programmers (i.e. no lambda functions, threads, new C++ language features, etc.)
+
+
+## Features
+
+    * Easily start re-advertising the ESP 32 device if BLE connection is lost.
+    * Apple ANCS notification support, with advanced message details.
+
+
 ## Installation
 
 Put the unzipped library code into your ~/arduino/libraries/ folder, under a ESP32NotificationsLib subfolder:
@@ -20,6 +29,9 @@ Then you should see the examples and be able to include the library in your proj
 ## Usage
 
 See the ble_connection example.
+
+Also, for a real-world example, the project https://github.com/jhud/hackwatch uses this library.
+
 
 ## History / Acknowledgements
 

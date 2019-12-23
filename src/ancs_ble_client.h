@@ -22,6 +22,7 @@ public:
     * Become a BLE client to a remote BLE server. Pass in address of the server.
     */
 	ANCSBLEClient();
+	virtual ~ANCSBLEClient();
 	void setNotificationArrivedCallback(ble_notification_arrived_t cbNotification);
 
 public:
