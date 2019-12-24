@@ -37,6 +37,7 @@ public:
 		gatts_connect_evt_param * connectEventParam = (gatts_connect_evt_param *) param;
         instance->client = new ANCSBLEClient(); // @todo memory leaks?
 		instance->client->setNotificationArrivedCallback(instance->cbNotification);
+		instance->client->setNotificationRemovedCallback(instance->cbRemoved);
 		//instance->client->setStackSize(50000);
 	    ::xTaskCreatePinnedToCore(&ANCSBLEClient::startClientTask, "ClientTask", 10000, new BLEAddress(connectEventParam->remote_bda), 5, &instance->client->clientTaskHandle, 0);
 		
@@ -113,6 +114,9 @@ void BLENotifications::setNotificationCallback(ble_notification_arrived_t callba
 	cbNotification = callback;
 }
 
+void BLENotifications::setRemovedCallback(ble_notification_removed_t callback) {
+	cbRemoved = callback;	
+}
 
 void BLENotifications::actionPositive() {
 	ESP_LOGI(LOG_TAG, "actionPositive()");

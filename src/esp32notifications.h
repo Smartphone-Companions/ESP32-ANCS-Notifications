@@ -70,6 +70,7 @@ class BLENotifications {
 	private:
 		ble_notifications_state_changed_t cbStateChanged;
 		ble_notification_arrived_t cbNotification;
+		ble_notification_removed_t cbRemoved;
 		
 		class BLEServer* server;
 		class ANCSBLEClient* client;
