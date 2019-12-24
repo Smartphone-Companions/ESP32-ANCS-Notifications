@@ -24,6 +24,7 @@ public:
 	ANCSBLEClient();
 	virtual ~ANCSBLEClient();
 	void setNotificationArrivedCallback(ble_notification_arrived_t cbNotification);
+	void setNotificationRemovedCallback(ble_notification_removed_t cbNotification);
 
 public:
 	static BLEUUID getAncsServiceUUID(); // To be able to advertise it
@@ -40,17 +41,18 @@ private:
 	 * A notification event only contains minimal information. We need to request the extra info
 	 * in a second BLE request, then fill in the data in our notification queue as it arrives.
 	 */
-	void retrieveExtraNotificationData(BLERemoteCharacteristic *, uint32_t);
+	void retrieveExtraNotificationData(BLERemoteCharacteristic *, Notification &);
 	
 	/**
 	 * Check if this notification is a call event, by checking the triggering app type.
 	 * @return true if this is a an incoming call.
 	 */
-	bool isIncomingCall(const Notification * notification) const;
+	bool isIncomingCall(const Notification & notification) const;
 	
 	ANCSNotificationQueue * notificationQueue;
 	
 	ble_notification_arrived_t notificationCB;
+	ble_notification_removed_t removedCB;
 };
 
 #endif // ANCS_BLE_CLIENT_H_

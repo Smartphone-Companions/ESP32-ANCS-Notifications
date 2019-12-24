@@ -3,6 +3,7 @@ Easy-to-use Arduino library for interfacing an ESP 32 with Bluetooth LE mobile d
 
 This library is designed to follow the standard Arduino library style, and be as easy to use and clear as possible for non-programmers (i.e. no lambda functions, threads, new C++ language features, etc.)
 
+Note that this is a work in progress and is incomplete (but should work).
 
 ## Features
 

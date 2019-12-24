@@ -54,6 +54,7 @@ class BLENotifications {
 		
         void setConnectionStateChangedCallback(ble_notifications_state_changed_t);
         void setNotificationCallback(ble_notification_arrived_t);
+		void setRemovedCallback(ble_notification_removed_t);
 
         void actionPositive();
         void actionNegative();

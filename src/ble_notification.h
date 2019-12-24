@@ -1,12 +1,15 @@
-// Based on CarWatch project
+/**
+ * A notification.
+ */
 
+// Based on CarWatch project
 #ifndef BLE_NOTIFICATION_H_
 #define BLE_NOTIFICATION_H_
 
 #include <string>
 
 /**
- * Notification category, based on ANCS values
+ * Notification category, based on ANCS values, but could also be used for Android.
  */
 typedef enum
 {
@@ -64,6 +67,10 @@ typedef enum
 
 };
 
+
+/**
+ * A notification, usable by the caller of the library.
+ */
 struct Notification {
     std::string title;
     std::string message;
@@ -72,6 +79,8 @@ struct Notification {
     uint32_t uuid = 0;
     bool showed = false;
     bool isComplete = false;
+	NotificationCategory category; /**< If it is a call, social media, email, etc. */
+	uint8_t categoryCount; /**< Number of other notifications in this category (ie badge number count). */
 };
 
 /**
@@ -79,6 +88,14 @@ struct Notification {
  * @param notification The notification that just arrived.
  */
 typedef void (*ble_notification_arrived_t)(const Notification * notification);
+
+/**
+ * Callback for when a notification was removed.
+ * @param notification The notification that was removed.
+ */
+typedef void (*ble_notification_removed_t)(const Notification * notification);
+
+
 
 
 #endif

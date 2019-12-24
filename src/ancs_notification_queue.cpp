@@ -3,27 +3,28 @@
 
 static char LOG_TAG[] = "ANCSNotificationQueue";
 
-void ANCSNotificationQueue::addPendingNotification(uint32_t uuid)
+
+void ANCSNotificationQueue::addPendingNotification(const Notification pending)
 {
-  pendingNotification.push(uuid);
-  ESP_LOGI(LOG_TAG, "add pending Notification, id: %d", uuid);
+  pendingNotification.push(pending);
+  ESP_LOGD(LOG_TAG, "Add pending Notification, id: %d", pending.uuid);
 }
 
-uint32_t ANCSNotificationQueue::getNextPendingNotification()
+
+bool ANCSNotificationQueue::pendingNotificationExists() {
+	return (pendingNotification.size() > 0);
+}
+
+
+Notification ANCSNotificationQueue::getNextPendingNotification()
 {
-  if (pendingNotification.size() > 0)
-  {
-    uint32_t uuid = pendingNotification.top();
+	assert(pendingNotification.size() > 0);
+    Notification pending = pendingNotification.top();
     pendingNotification.pop();
-    ESP_LOGI(LOG_TAG, "getting pending Notification %d", uuid);
-    return uuid;
-  }
-  else
-  {
-    //Serial.println("no pending Notification");
-    return 0;
-  }
-};
+    ESP_LOGD(LOG_TAG, "Getting pending Notification %d", pending.uuid);
+    return pending;
+}
+
 
 void ANCSNotificationQueue::addNotification(uint32_t uuid, Notification notification, bool isCalling)
 {
@@ -43,16 +44,19 @@ void ANCSNotificationQueue::addNotification(uint32_t uuid, Notification notifica
   }
 };
 
+
 std::map<uint32_t, Notification> *ANCSNotificationQueue::getNotificationList()
 {
   return &notificationList;
 }
+
 
 bool ANCSNotificationQueue::contains(uint32_t uuid)
 {
   std::map<uint32_t, Notification>::iterator it = notificationList.find(uuid);
   return (it != notificationList.end()) | (callingNotification.uuid != 0);
 }
+
 
 Notification *ANCSNotificationQueue::getNotification(uint32_t uuid)
 {
@@ -64,18 +68,22 @@ Notification *ANCSNotificationQueue::getNotification(uint32_t uuid)
   return (it != notificationList.end()) ? &it->second : new Notification();
 }
 
+
 void ANCSNotificationQueue::removeCallNotification()
 {
   callingNotification.uuid = 0;
 }
 
+
 bool ANCSNotificationQueue::isCallingNotification() {
   return (callingNotification.uuid != 0);
 }
 
+
 Notification *ANCSNotificationQueue::getCallingNotification() {
   return &callingNotification;
 }
+
 
 void ANCSNotificationQueue::removeNotification(uint32_t uuid) {
   std::map<uint32_t, Notification>::iterator it = notificationList.find(uuid);

@@ -15,9 +15,14 @@
  * Also contains a special "calling notification", which represents an incoming call.
  */
 class ANCSNotificationQueue{
-    public:
-        void addPendingNotification(uint32_t uuid);
-        uint32_t getNextPendingNotification();
+    public:		
+        void addPendingNotification(const Notification pending);
+		bool pendingNotificationExists();
+        Notification getNextPendingNotification();
+		
+		/**
+		 * Add notification to the queue.
+		 */
         void addNotification(uint32_t uuid, Notification notification, bool isCalling);
         void removeNotification(uint32_t uuid);
         void removeCallNotification();
@@ -35,7 +40,7 @@ class ANCSNotificationQueue{
     private:
         static const int notificationListSize = 32;
         std::map<uint32_t, Notification> notificationList;
-        std::stack<uint32_t> pendingNotification;
+        std::stack<Notification> pendingNotification; /**< Goes into a stack first, before we fetch detailed info into the queue. */
         Notification callingNotification;
 };
 #endif

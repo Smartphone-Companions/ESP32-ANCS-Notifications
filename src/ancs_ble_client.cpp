@@ -48,10 +48,11 @@ static void notificationSourceNotifyCallback(
 
 
 ANCSBLEClient::ANCSBLEClient()
-	 : notificationCB(nullptr) {
+	 : notificationCB(nullptr)
+	 , removedCB(nullptr) {
 	assert(sharedInstance == nullptr);
 	sharedInstance = this;  
-	  notificationQueue = new ANCSNotificationQueue();
+	notificationQueue = new ANCSNotificationQueue();
 }
 
 
@@ -105,13 +106,13 @@ void ANCSBLEClient::startClientTask(void * params) {
         pNotificationSourceCharacteristic->registerForNotify(notificationSourceNotifyCallback);
         pNotificationSourceCharacteristic->getDescriptor(BLEUUID((uint16_t)0x2902))->writeValue((uint8_t*)v,2,true);
 
+		ANCSNotificationQueue * queue = sharedInstance->notificationQueue;
 	    while (1)
 	    {
-	        uint32_t pendingNotificationId = sharedInstance->notificationQueue->getNextPendingNotification();
-	        if (pendingNotificationId != 0)
-	        {
-	          ESP_LOGD(LOG_TAG, "retriveNotificationData: %d", pendingNotificationId);
-	          sharedInstance->retrieveExtraNotificationData(pControlPointCharacteristic, pendingNotificationId);
+	        if (queue->pendingNotificationExists()) {
+			Notification pending = queue->getNextPendingNotification();
+	          ESP_LOGD(LOG_TAG, "retriveNotificationData: %d", pending.uuid);
+	          sharedInstance->retrieveExtraNotificationData(pControlPointCharacteristic, pending);
 	        }
 	        delay(500);
 	    }
@@ -128,12 +129,25 @@ void ANCSBLEClient::setNotificationArrivedCallback(ble_notification_arrived_t cb
 }
 
 
-void ANCSBLEClient::retrieveExtraNotificationData(BLERemoteCharacteristic * _controlPointCharacteristic, uint32_t notifyUUID) {
+void ANCSBLEClient::setNotificationRemovedCallback(ble_notification_removed_t cbNotification) {
+	removedCB = cbNotification;
+}
+
+
+void ANCSBLEClient::retrieveExtraNotificationData(BLERemoteCharacteristic * _controlPointCharacteristic, Notification & pending) {
 	  uint8_t uuid[4];
+	  uint32_t notifyUUID = pending.uuid;
 	  uuid[0] = notifyUUID;
 	  uuid[1] = notifyUUID >> 8;
 	  uuid[2] = notifyUUID >> 16;
 	  uuid[3] = notifyUUID >> 24;
+	  
+	  
+      bool notificationAlreadyInQueue = notificationQueue->contains(pending.uuid);
+      if (notificationAlreadyInQueue == false) {
+          notificationQueue->addNotification(notifyUUID, pending, isIncomingCall(pending));
+      }
+	  
 	  const uint8_t vIdentifier[] = {0x0, uuid[0], uuid[1], uuid[2], uuid[3], ANCS::NotificationAttributeIDAppIdentifier};
 	  _controlPointCharacteristic->writeValue((uint8_t *)vIdentifier, 6, true);
 	  const uint8_t vTitle[] = {0x0, uuid[0], uuid[1], uuid[2], uuid[3], ANCS::NotificationAttributeIDTitle, 0x0, 0x10};
@@ -156,19 +170,13 @@ void ANCSBLEClient::onDataSourceNotify(
     messageId = messageId << 8 | pData[3];
     messageId = messageId << 16 | pData[2];
     messageId = messageId << 24 | pData[1];
-    bool notificationAlreadyInQueue = notificationQueue->contains(messageId);
+
     for (int i = 8; i < length; i++)
     {
       message += (char)pData[i];
     }
 
-	ESP_LOGD(LOG_TAG, "ID: %d raw message: %s isset==%s type==%d", messageId, message.c_str(), notificationAlreadyInQueue ? "true":"false", pData[5]);
-
-    if (notificationAlreadyInQueue == false)
-    {
-        Notification notification;
-        notificationQueue->addNotification(messageId, notification, isIncomingCall(&notification));
-    }
+	ESP_LOGD(LOG_TAG, "ID: %d raw message: %s type==%d", messageId, message.c_str(), pData[5]);
 
 	Notification * notification = notificationQueue->getNotification(messageId);
 
@@ -196,7 +204,7 @@ void ANCSBLEClient::onDataSourceNotify(
       }
 }
 
-bool ANCSBLEClient::isIncomingCall(const Notification * notification) const {
+bool ANCSBLEClient::isIncomingCall(const Notification & notification) const {
 	// @todo detect if it is a FaceTime or call
 	return false;
 }
@@ -205,8 +213,7 @@ void ANCSBLEClient::onNotificationSourceNotify(
 	  BLERemoteCharacteristic *pNotificationSourceCharacteristic,
 	  uint8_t *pData,
 	  size_t length,
-	  bool isNotify)
-	{
+	  bool isNotify) {
 	  uint32_t messageId;
 
 	  messageId = pData[7];
@@ -214,22 +221,27 @@ void ANCSBLEClient::onNotificationSourceNotify(
 	  messageId = messageId << 16 | pData[5];
 	  messageId = messageId << 24 | pData[4];
 
-	  if (pData[0] == ANCS::EventIDNotificationRemoved)
-	  {
-	    ESP_LOGI(LOG_TAG, "notification removed: %d", messageId);
+	if (pData[0] == ANCS::EventIDNotificationRemoved) {
+		ESP_LOGI(LOG_TAG, "notification removed: %d", messageId);
 
-	    Notification *notification = notificationQueue->getNotification(messageId);
+	    Notification * notification = notificationQueue->getNotification(messageId);
 
-	    if (isIncomingCall(notification))
+	    if (isIncomingCall(*notification))
 	    {
 	      notificationQueue->addNotification(messageId, *notification, false);
 	      notificationQueue->removeCallNotification();
 	    }
-	  }
-	  if (pData[0] == ANCS::EventIDNotificationAdded)
-	  {
+		
+		if (removedCB) {
+			removedCB(notification);
+		}
+	}
+	else if (pData[0] == ANCS::EventIDNotificationAdded) {
 	    ESP_LOGI(LOG_TAG, "notification added, type: %d", pData[2]);
-
-	    notificationQueue->addPendingNotification(messageId);
+		Notification pending;
+		pending.uuid = messageId;
+		pending.category = NotificationCategory(pData[2]);
+		pending.categoryCount = pData[3]; 
+	    notificationQueue->addPendingNotification(pending);
 	}
 }

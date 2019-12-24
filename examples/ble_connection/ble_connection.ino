@@ -52,6 +52,17 @@ void onNotificationArrived(const Notification * notification) {
      Serial.println(notification->title.c_str());
      Serial.println(notification->message.c_str());
      Serial.println(notification->type.c_str());  
+     Serial.println(notifications.getNotificationCategoryDescription(notification->category));  
+	Serial.println(notification->categoryCount);  
+}
+
+
+void onNotificationRemoved(const Notification * notification) {
+
+     Serial.print("Removed notification: ");   
+     Serial.println(notification->title.c_str());
+     Serial.println(notification->message.c_str());
+     Serial.println(notification->type.c_str());  
 }
 
 
@@ -75,6 +86,7 @@ void setup() {
     notifications.begin("BLEConnection device name");
     notifications.setConnectionStateChangedCallback(onBLEStateChanged);
     notifications.setNotificationCallback(onNotificationArrived);
+    notifications.setRemovedCallback(onNotificationRemoved);
 }
 
 
@@ -103,7 +115,7 @@ void loop() {
 X- Connect/Disconnect 
 X- Set Name of Peripheral
 X- Notification added 
-- Notification removed
-- Notification Attributes
-- Perform Notification Actions (positive or negative)
+X- Notification removed
+X- Notification Attributes
+X- Perform Notification Actions (positive or negative)
 */
