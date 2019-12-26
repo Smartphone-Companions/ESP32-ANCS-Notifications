@@ -26,6 +26,9 @@
 // Create an interface to the BLE notification functionality
 BLENotifications notifications;
 
+// The incoming call's ID number, or zero if no notification
+uint32_t incomingCallNotificationUUID;
+
 // This callback will be called when a Bluetooth LE connection is made or broken.
 // You can update the ESP 32's UI or take other action here.
 void onBLEStateChanged(BLENotifications::State state) {
@@ -53,7 +56,14 @@ void onNotificationArrived(const Notification * notification) {
      Serial.println(notification->message.c_str());
      Serial.println(notification->type.c_str());  
      Serial.println(notifications.getNotificationCategoryDescription(notification->category));  
-	Serial.println(notification->categoryCount);  
+	Serial.println(notification->categoryCount);
+	if (notification->category == CategoryIDIncomingCall) {
+		incomingCallNotificationUUID = notification->uuid;
+		Serial.println("--- INCOMING CALL: PRESS A TO ACCEPT, C TO REJECT ---"); 
+	}
+	else {
+		incomingCallNotificationUUID = 0; // Make invalid - no incoming call
+	}
 }
 
 
@@ -93,29 +103,18 @@ void setup() {
 void checkButtons() {
   if (digitalRead(BUTTON_A) == LOW) {
     Serial.println("Positive action."); 
-      notifications.actionPositive();
+      notifications.actionPositive(incomingCallNotificationUUID);
   }
   else if (digitalRead(BUTTON_C) == LOW) {
     Serial.println("Negative action."); 
-      notifications.actionNegative();
+      notifications.actionNegative(incomingCallNotificationUUID);
   }
 }
 
 
 // Standard Arduino function that is called in an endless loop after setup
 void loop() {	
-    if (notifications.getNumPending() == 0) {
-        return;
+    if (incomingCallNotificationUUID > 0) {
+    	checkButtons();
     }
-
-    checkButtons();
 }
-
-/*
-X- Connect/Disconnect 
-X- Set Name of Peripheral
-X- Notification added 
-X- Notification removed
-X- Notification Attributes
-X- Perform Notification Actions (positive or negative)
-*/

@@ -118,13 +118,15 @@ void BLENotifications::setRemovedCallback(ble_notification_removed_t callback) {
 	cbRemoved = callback;	
 }
 
-void BLENotifications::actionPositive() {
+void BLENotifications::actionPositive(uint32_t uuid) {
 	ESP_LOGI(LOG_TAG, "actionPositive()");
+	client->performAction(uuid, uint8_t(ANCS::NotificationActionPositive));
 }
 
 
-void BLENotifications::actionNegative() {
-
+void BLENotifications::actionNegative(uint32_t uuid) {
+	ESP_LOGI(LOG_TAG, "actionNegative()");
+	client->performAction(uuid, uint8_t(ANCS::NotificationActionNegative));
 }
 
 void BLENotifications::startAdvertising() {

@@ -38,6 +38,13 @@ typedef enum
 
 typedef enum
 {
+    NotificationActionPositive = 0,
+    NotificationActionNegative = 1
+} NotificationAction;
+
+
+typedef enum
+{
     EventFlagSilent = (1 << 0),
     EventFlagImportant = (1 << 1),
     EventFlagPreExisting = (1 << 2),
@@ -55,7 +62,7 @@ typedef enum
 
 typedef enum
 {
-    NotificationAttributeIDAppIdentifier = 0, /**< ie com.facebook.Messenger */
+    NotificationAttributeIDAppIdentifier = 0, /**< ie com.facebook.Messenger, or some other app */
     NotificationAttributeIDTitle = 1,    // (Needs to be followed by a 2-bytes max length parameter)
     NotificationAttributeIDSubtitle = 2, // (Needs to be followed by a 2-bytes max length parameter)
     NotificationAttributeIDMessage = 3,  // (Needs to be followed by a 2-bytes max length parameter)

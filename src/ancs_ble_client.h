@@ -26,8 +26,14 @@ public:
 	void setNotificationArrivedCallback(ble_notification_arrived_t cbNotification);
 	void setNotificationRemovedCallback(ble_notification_removed_t cbNotification);
 
+	void performAction(uint32_t notifyUUID, uint8_t actionID);
+
 public:
 	static BLEUUID getAncsServiceUUID(); // To be able to advertise it
+	
+	/**
+	 * Start the FreeRTOS task that handles the client connection.
+	 */
 	static void startClientTask(void *data);
 	
 public:
@@ -37,11 +43,13 @@ public:
 	void onNotificationSourceNotify(BLERemoteCharacteristic*, uint8_t*, size_t, bool);
 	
 private:
+	void setup(const BLEAddress*);
+	
 	/**
 	 * A notification event only contains minimal information. We need to request the extra info
 	 * in a second BLE request, then fill in the data in our notification queue as it arrives.
 	 */
-	void retrieveExtraNotificationData(BLERemoteCharacteristic *, Notification &);
+	void retrieveExtraNotificationData(Notification &);
 	
 	/**
 	 * Check if this notification is a call event, by checking the triggering app type.
@@ -53,6 +61,8 @@ private:
 	
 	ble_notification_arrived_t notificationCB;
 	ble_notification_removed_t removedCB;
+	
+	class BLERemoteCharacteristic* pControlPointCharacteristic;
 };
 
 #endif // ANCS_BLE_CLIENT_H_

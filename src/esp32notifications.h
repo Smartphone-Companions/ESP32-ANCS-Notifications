@@ -56,10 +56,8 @@ class BLENotifications {
         void setNotificationCallback(ble_notification_arrived_t);
 		void setRemovedCallback(ble_notification_removed_t);
 
-        void actionPositive();
-        void actionNegative();
-		
-		int getNumPending() const { return 0; }
+        void actionPositive(uint32_t uuid);
+        void actionNegative(uint32_t uuid);
 	
 		/** 
 		 * Given a category, return a description of the category in English

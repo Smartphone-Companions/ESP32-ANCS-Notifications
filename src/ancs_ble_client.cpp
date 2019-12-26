@@ -48,8 +48,10 @@ static void notificationSourceNotifyCallback(
 
 
 ANCSBLEClient::ANCSBLEClient()
-	 : notificationCB(nullptr)
-	 , removedCB(nullptr) {
+	: notificationCB(nullptr)
+	, removedCB(nullptr)
+	, pControlPointCharacteristic(nullptr)
+{
 	assert(sharedInstance == nullptr);
 	sharedInstance = this;  
 	notificationQueue = new ANCSNotificationQueue();
@@ -63,48 +65,7 @@ ANCSBLEClient::~ANCSBLEClient() {
 void ANCSBLEClient::startClientTask(void * params) {
 	ESP_LOGD(LOG_TAG, "Starting client");
 		const BLEAddress* address = (BLEAddress*)params;
-        BLEClient*  pClient  = BLEDevice::createClient();
-        BLEDevice::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT);
-        BLEDevice::setSecurityCallbacks(new NotificationSecurityCallbacks()); // @todo memory leak?
-
-        BLESecurity *pSecurity = new BLESecurity();
-        pSecurity->setAuthenticationMode(ESP_LE_AUTH_REQ_SC_BOND);
-        pSecurity->setCapability(ESP_IO_CAP_IO);
-        pSecurity->setRespEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
-        // Connect to the remove BLE Server.
-        pClient->connect(*address);
-
-        /** BEGIN ANCS SERVICE **/
-        // Obtain a reference to the service we are after in the remote BLE server.
-        BLERemoteService* pAncsService = pClient->getService(ancsServiceUUID);
-        if (pAncsService == nullptr) {
-            ESP_LOGD(LOG_TAG, "Failed to find service UUID ancsServiceUUID.");
-            return;
-        }
-        // Obtain a reference to the characteristic in the service of the remote BLE server.
-        BLERemoteCharacteristic* pNotificationSourceCharacteristic = pAncsService->getCharacteristic(notificationSourceCharacteristicUUID);
-        if (pNotificationSourceCharacteristic == nullptr) {
-            ESP_LOGD(LOG_TAG, "Failed to find characteristic UUID notificationSourceCharacteristicUUID");
-            return;
-        }        
-        // Obtain a reference to the characteristic in the service of the remote BLE server.
-		BLERemoteCharacteristic* pControlPointCharacteristic;
-        pControlPointCharacteristic = pAncsService->getCharacteristic(controlPointCharacteristicUUID);
-        if (pControlPointCharacteristic == nullptr) {
-            ESP_LOGD(LOG_TAG, "Failed to find characteristic UUID: controlPointCharacteristicUUID");
-            return;
-        }        
-        // Obtain a reference to the characteristic in the service of the remote BLE server.
-        BLERemoteCharacteristic* pDataSourceCharacteristic = pAncsService->getCharacteristic(dataSourceCharacteristicUUID);
-        if (pDataSourceCharacteristic == nullptr) {
-            ESP_LOGD(LOG_TAG, "Failed to find characteristic UUID dataSourceCharacteristicUUID");
-            return;
-        }        
-        const uint8_t v[]={0x1,0x0};
-        pDataSourceCharacteristic->registerForNotify(dataSourceNotifyCallback);
-        pDataSourceCharacteristic->getDescriptor(BLEUUID((uint16_t)0x2902))->writeValue((uint8_t*)v,2,true);
-        pNotificationSourceCharacteristic->registerForNotify(notificationSourceNotifyCallback);
-        pNotificationSourceCharacteristic->getDescriptor(BLEUUID((uint16_t)0x2902))->writeValue((uint8_t*)v,2,true);
+		sharedInstance->setup(address);
 
 		ANCSNotificationQueue * queue = sharedInstance->notificationQueue;
 	    while (1)
@@ -112,12 +73,57 @@ void ANCSBLEClient::startClientTask(void * params) {
 	        if (queue->pendingNotificationExists()) {
 			Notification pending = queue->getNextPendingNotification();
 	          ESP_LOGD(LOG_TAG, "retriveNotificationData: %d", pending.uuid);
-	          sharedInstance->retrieveExtraNotificationData(pControlPointCharacteristic, pending);
+	          sharedInstance->retrieveExtraNotificationData(pending);
 	        }
 	        delay(500);
 	    }
 }
 
+
+void ANCSBLEClient::setup(const BLEAddress * address) {
+    BLEClient*  pClient  = BLEDevice::createClient();
+    BLEDevice::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT);
+    BLEDevice::setSecurityCallbacks(new NotificationSecurityCallbacks()); // @todo memory leak?
+
+    BLESecurity *pSecurity = new BLESecurity();
+    pSecurity->setAuthenticationMode(ESP_LE_AUTH_REQ_SC_BOND);
+    pSecurity->setCapability(ESP_IO_CAP_IO);
+    pSecurity->setRespEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
+    // Connect to the remove BLE Server.
+    pClient->connect(*address);
+
+    /** BEGIN ANCS SERVICE **/
+    // Obtain a reference to the service we are after in the remote BLE server.
+    BLERemoteService* pAncsService = pClient->getService(ancsServiceUUID);
+    if (pAncsService == nullptr) {
+        ESP_LOGW(LOG_TAG, "Failed to find service UUID ancsServiceUUID.");
+        return;
+    }
+    // Obtain a reference to the characteristic in the service of the remote BLE server.
+    BLERemoteCharacteristic* pNotificationSourceCharacteristic = pAncsService->getCharacteristic(notificationSourceCharacteristicUUID);
+    if (pNotificationSourceCharacteristic == nullptr) {
+        ESP_LOGW(LOG_TAG, "Failed to find characteristic UUID notificationSourceCharacteristicUUID");
+        return;
+    }        
+    // Obtain a reference to the characteristic in the service of the remote BLE server.
+	
+    pControlPointCharacteristic = pAncsService->getCharacteristic(controlPointCharacteristicUUID);
+    if (pControlPointCharacteristic == nullptr) {
+        ESP_LOGW(LOG_TAG, "Failed to find characteristic UUID: controlPointCharacteristicUUID");
+        return;
+    }        
+    // Obtain a reference to the characteristic in the service of the remote BLE server.
+    BLERemoteCharacteristic* pDataSourceCharacteristic = pAncsService->getCharacteristic(dataSourceCharacteristicUUID);
+    if (pDataSourceCharacteristic == nullptr) {
+        ESP_LOGW(LOG_TAG, "Failed to find characteristic UUID dataSourceCharacteristicUUID");
+        return;
+    }        
+    const uint8_t v[]={0x1,0x0};
+    pDataSourceCharacteristic->registerForNotify(dataSourceNotifyCallback);
+    pDataSourceCharacteristic->getDescriptor(BLEUUID((uint16_t)0x2902))->writeValue((uint8_t*)v,2,true);
+    pNotificationSourceCharacteristic->registerForNotify(notificationSourceNotifyCallback);
+    pNotificationSourceCharacteristic->getDescriptor(BLEUUID((uint16_t)0x2902))->writeValue((uint8_t*)v,2,true);
+}
 
 BLEUUID ANCSBLEClient::getAncsServiceUUID() {
 	return ancsServiceUUID;
@@ -134,7 +140,7 @@ void ANCSBLEClient::setNotificationRemovedCallback(ble_notification_removed_t cb
 }
 
 
-void ANCSBLEClient::retrieveExtraNotificationData(BLERemoteCharacteristic * _controlPointCharacteristic, Notification & pending) {
+void ANCSBLEClient::retrieveExtraNotificationData(Notification & pending) {
 	  uint8_t uuid[4];
 	  uint32_t notifyUUID = pending.uuid;
 	  uuid[0] = notifyUUID;
@@ -149,13 +155,13 @@ void ANCSBLEClient::retrieveExtraNotificationData(BLERemoteCharacteristic * _con
       }
 	  
 	  const uint8_t vIdentifier[] = {0x0, uuid[0], uuid[1], uuid[2], uuid[3], ANCS::NotificationAttributeIDAppIdentifier};
-	  _controlPointCharacteristic->writeValue((uint8_t *)vIdentifier, 6, true);
+	  pControlPointCharacteristic->writeValue((uint8_t *)vIdentifier, 6, true);
 	  const uint8_t vTitle[] = {0x0, uuid[0], uuid[1], uuid[2], uuid[3], ANCS::NotificationAttributeIDTitle, 0x0, 0x10};
-	  _controlPointCharacteristic->writeValue((uint8_t *)vTitle, 8, true);
+	  pControlPointCharacteristic->writeValue((uint8_t *)vTitle, 8, true);
 	  const uint8_t vMessage[] = {0x0, uuid[0], uuid[1], uuid[2], uuid[3], ANCS::NotificationAttributeIDMessage, 0x0, 0x10};
-	  _controlPointCharacteristic->writeValue((uint8_t *)vMessage, 8, true);
+	  pControlPointCharacteristic->writeValue((uint8_t *)vMessage, 8, true);
 	  const uint8_t vDate[] = {0x0, uuid[0], uuid[1], uuid[2], uuid[3], ANCS::NotificationAttributeIDDate};
-	  _controlPointCharacteristic->writeValue((uint8_t *)vDate, 6, true);
+	  pControlPointCharacteristic->writeValue((uint8_t *)vDate, 6, true);
 }
 
 void ANCSBLEClient::onDataSourceNotify(
@@ -205,8 +211,8 @@ void ANCSBLEClient::onDataSourceNotify(
 }
 
 bool ANCSBLEClient::isIncomingCall(const Notification & notification) const {
-	// @todo detect if it is a FaceTime or call
-	return false;
+	// @todo detect if it is a FaceTime or call by app? Or is category sufficient?
+	return notification.category == CategoryIDIncomingCall;
 }
 	
 void ANCSBLEClient::onNotificationSourceNotify(
@@ -244,4 +250,18 @@ void ANCSBLEClient::onNotificationSourceNotify(
 		pending.categoryCount = pData[3]; 
 	    notificationQueue->addPendingNotification(pending);
 	}
+}
+
+
+void ANCSBLEClient::performAction(uint32_t notifyUUID, uint8_t actionID) {
+	
+  uint8_t uuid[4];
+  uuid[0] = notifyUUID;
+  uuid[1] = notifyUUID >> 8;
+  uuid[2] = notifyUUID >> 16;
+  uuid[3] = notifyUUID >> 24;
+	
+  const uint8_t vPerformAction[] = {ANCS::CommandIDPerformNotificationAction, uuid[0], uuid[1], uuid[2], uuid[3], actionID};
+  pControlPointCharacteristic->writeValue((uint8_t *)vPerformAction, (sizeof(vPerformAction)/sizeof(vPerformAction[0])), true);
+
 }
