@@ -66,6 +66,7 @@ public:
 BLENotifications::BLENotifications()
 	 : cbStateChanged(nullptr)
 	 , client(nullptr)
+	 , isAdvertising(false)
 {
 	
 }
@@ -135,9 +136,12 @@ void BLENotifications::startAdvertising() {
     // Start soliciting the Apple ANCS service and make the device visible to searches on iOS (from Apple ANCS documentation)
     BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
 	
-	// Stop it in case it is already running
-	pAdvertising->stop();
-	
+	if (isAdvertising == true) {
+		// Stopping it without checking first seems to cause failures to advertise without debugging on.
+		// There is no way to query the BLEAdvertising object to see if it is advertising, so we keep a variable.
+		pAdvertising->stop();
+	}
+
     BLEAdvertisementData oAdvertisementData = BLEAdvertisementData();
     oAdvertisementData.setFlags(0x01);
     oAdvertisementData.setServiceSolicitation(ANCSBLEClient::getAncsServiceUUID()); 
@@ -151,6 +155,7 @@ void BLENotifications::startAdvertising() {
 
     //Start advertising
     pAdvertising->start();
+	isAdvertising = true;
 }
 
 

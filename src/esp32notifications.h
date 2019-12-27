@@ -73,6 +73,8 @@ class BLENotifications {
 		class BLEServer* server;
 		class ANCSBLEClient* client;
 		
+		bool isAdvertising;
+		
 		friend class MyServerCallbacks; //Allow internal handlers to access the callbacks of the main class
 };
 

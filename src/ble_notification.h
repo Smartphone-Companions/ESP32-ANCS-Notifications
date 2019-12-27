@@ -50,7 +50,7 @@ typedef enum
     EventFlagPreExisting = (1 << 2),
     EventFlagPositiveAction = (1 << 3),
     EventFlagNegativeAction = (1 << 4)
-} event_flags_t;
+} EventFlags;
 
 typedef enum
 {
@@ -82,6 +82,7 @@ struct Notification {
     std::string title;
     std::string message;
     std::string type;
+	uint32_t eventFlags; /**< Bitfield of ANCS::EventFlags flags. */
     time_t time;
     uint32_t uuid = 0;
     bool showed = false;
