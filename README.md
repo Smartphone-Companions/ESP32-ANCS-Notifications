@@ -29,9 +29,28 @@ Then you should see the examples and be able to include the library in your proj
  
 ## Usage
 
-See the ble_connection example.
+This works like a standard Arduino library. Here's a minimal example:
 
-Also, for a real-world example, the project https://github.com/jhud/hackwatch uses this library.
+```
+// Create an interface to the BLE notification library at the top of your sketch
+BLENotifications notifications;
+
+// Start looking for a device connection
+notifications.begin("BLEConnection device name");
+
+// Setup a callback for when a notification arrives
+void onNotificationArrived(const Notification * notification) {
+    Serial.println(notification->title.c_str());
+}
+
+// Register the callback to be informed when a notification arrives
+notifications.setConnectionStateChangedCallback(onBLEStateChanged);
+notifications.setNotificationCallback(onNotificationArrived);
+```
+
+See the ble_connection example for a more fully-featured example.
+
+To see a real-world project, https://github.com/jhud/hackwatch uses this library.
 
 
 ## History / Acknowledgements
