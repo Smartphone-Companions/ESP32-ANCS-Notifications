@@ -12,17 +12,15 @@
 // Or feel free to add your own board layout for your specific hardware.
 // See the ESP32 pinout to choose a free GPIO pin on your hardware.
 
-// An inexpensive and easy-to build open-source smartwatch platform https://github.com/jhud/hackwatch
-#define HARDWARE_HACKWATCH
+#define HARDWARE_STANDARD
 
-#ifdef HARDWARE_HACKWATCH
-    #define BUTTON_A    25 // left button
-    #define BUTTON_B    26 // center button
-    #define BUTTON_C    27 // right button
+#ifdef HARDWARE_STANDARD
+    #define BUTTON_A    25 // left button - use this GPIO pin
+    #define BUTTON_B    26 // center button - use this GPIO pin
+    #define BUTTON_C    27 // right button - use this GPIO pin
 #else
     #error Hardware buttons not supported!
 #endif
-
 
 //////////
 // Example code begins

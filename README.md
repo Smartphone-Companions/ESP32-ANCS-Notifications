@@ -48,11 +48,16 @@ notifications.setConnectionStateChangedCallback(onBLEStateChanged);
 notifications.setNotificationCallback(onNotificationArrived);
 ```
 
+Note that the Espressif BLE libraries are very large, so you may need to increase your partition scheme to "Large" in the Arduino IDE.
+
 See the ble_connection example for a more fully-featured example.
 
-To see a real-world project, https://github.com/jhud/hackwatch uses this library.
+
 
 
 ## History / Acknowledgements
 
 Based on the work of CarWatch, Hackwatch, and S-March. This project was created to hide the complicated BLE notification internals behind a standard, easy-to-use Arduino library.
+
+To see a real-world project, https://github.com/jhud/hackwatch uses this library.
+
