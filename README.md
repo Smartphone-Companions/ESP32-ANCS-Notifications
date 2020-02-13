@@ -27,6 +27,11 @@ Then you should see the examples and be able to include the library in your proj
  #include "esp32notifications.h"
 ```
  
+### OSX Troubleshooting
+
+  - On OSX Catalina you might have trouble getting the "TTGO ESP32 OLED" board, or similar, recognised by Arduino. If so, try installing the driver for the CP2104 USB chip. https://www.silabs.com/products/development-tools/software/usb-to-uart-bridge-vcp-drivers
+ 
+ 
 ## Usage
 
 This works like a standard Arduino library. Here's a minimal example:
