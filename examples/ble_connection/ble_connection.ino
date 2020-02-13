@@ -4,7 +4,7 @@
 // A simple example program to retrieve notifications from your device, and output them to the Serial console.
 
 
-// Header for this library, from https://www.github.com/Smartphone-Companions/ESP32NotificationsLib.git
+// Header for this library, from https://www.github.com/Smartphone-Companions/ESP32-ANCS-Notifications.git
 #include "esp32notifications.h"
 
 /////
@@ -91,7 +91,7 @@ void setup() {
         delay(10);
     }
 
-    Serial.println("BLENotifications BLE ANCS on ESP32 Example");
+    Serial.println("ESP32-ANCS-Notifications Example");
     Serial.println("------------------------------------------");    
 
     // Set up the BLENotification library
