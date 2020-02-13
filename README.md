@@ -1,4 +1,4 @@
-# ESP32NotificationsLib
+# ESP32 ANCS Notifications
 Easy-to-use Arduino library for interfacing an ESP 32 with Bluetooth LE mobile device notifications.
 
 This library is designed to follow the standard Arduino library style, and be as easy to use and clear as possible for non-programmers (i.e. no lambda functions, threads, new C++ language features, etc.)
@@ -13,12 +13,12 @@ This library is designed to follow the standard Arduino library style, and be as
 
 ## Installation
 
-Put the unzipped library code into your ~/arduino/libraries/ folder, under a ESP32NotificationsLib subfolder:
+Put the unzipped library code into your ~/arduino/libraries/ folder, under an ESP32-ANCS-Notifications subfolder:
 
 Or use git:
  ```
  cd ~/arduino/libraries/
- git clone git@github.com:Smartphone-Companions/ESP32NotificationsLib.git
+ git clone git@github.com:Smartphone-Companions/ESP32-ANCS-Notifications.git
  ```
 
 Then you should see the examples and be able to include the library in your projects with:
@@ -42,6 +42,21 @@ BLENotifications notifications;
 
 // Start looking for a device connection
 notifications.begin("BLEConnection device name");
+
+// This callback will be called when a Bluetooth LE connection is made or broken.
+// You can update the ESP 32's UI or take other action here.
+void onBLEStateChanged(BLENotifications::State state) {
+  switch(state) {
+      case BLENotifications::StateConnected:
+          Serial.println("StateConnected - connected to a phone or tablet"); 
+          break;
+
+      case BLENotifications::StateDisconnected:
+          Serial.println("StateDisconnected - disconnected from a phone or tablet"); 
+          notifications.startAdvertising(); 
+          break; 
+  }
+}
 
 // Setup a callback for when a notification arrives
 void onNotificationArrived(const Notification * notification) {
