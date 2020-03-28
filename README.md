@@ -13,7 +13,10 @@ This library is designed to follow the standard Arduino library style, and be as
 
 ## Installation
 
-Put the unzipped library code into your ~/arduino/libraries/ folder, under an ESP32-ANCS-Notifications subfolder:
+You need to install the ESP32 core libraries. If you are getting build errors, it's possible you have an old version of the core libraries without BLE support. The install instructions for your specific OS are here:
+https://github.com/espressif/arduino-esp32
+
+Next, put this unzipped library code into your ~/arduino/libraries/ folder, under an ESP32-ANCS-Notifications subfolder:
 
 Or use git:
  ```
