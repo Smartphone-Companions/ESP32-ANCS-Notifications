@@ -1,6 +1,11 @@
 
 #define LOG_LOCAL_LEVEL ESP_LOG_VERBOSE
 
+// NKolban's original library has a setServiceSolicitation method. As of writing, this is not in the
+// Espressif core libs. If you are using NKolban's branch of the library, or if this moves into
+// the core libraries eventually, uncomment this.
+//#define BLE_LIB_HAS_SERVICE_SOLICITATION 
+
 #include "esp32notifications.h"
 #include "ancs_ble_client.h"
 #include "ble_security.h"
@@ -17,6 +22,11 @@
 static char LOG_TAG[] = "BLENotifications";
 
 extern const BLEUUID ancsServiceUUID;
+
+#ifndef BLE_LIB_HAS_SERVICE_SOLICITATION
+// Use a static function, instead of doing a whole private implementation just for a this one small patch.
+static void setServiceSolicitation(class BLEAdvertisementData & advertisementData, BLEUUID uuid);
+#endif
 
 class MyServerCallbacks: public BLEServerCallbacks {
 private:
@@ -144,7 +154,13 @@ void BLENotifications::startAdvertising() {
 
     BLEAdvertisementData oAdvertisementData = BLEAdvertisementData();
     oAdvertisementData.setFlags(0x01);
+	
+#ifdef BLE_LIB_HAS_SERVICE_SOLICITATION
     oAdvertisementData.setServiceSolicitation(ANCSBLEClient::getAncsServiceUUID()); 
+#else
+	setServiceSolicitation(oAdvertisementData, ANCSBLEClient::getAncsServiceUUID());
+#endif
+	
     pAdvertising->setAdvertisementData(oAdvertisementData);        
 
     // Set security
@@ -158,4 +174,31 @@ void BLENotifications::startAdvertising() {
 	isAdvertising = true;
 }
 
+
+#ifndef BLE_LIB_HAS_SERVICE_SOLICITATION
+void setServiceSolicitation(BLEAdvertisementData & advertisementData, BLEUUID uuid)
+{
+	char cdata[2];
+	switch(uuid.bitSize()) {
+		case 16: {
+			// [Len] [0x14] [UUID16] data
+			cdata[0] = 3;
+			cdata[1] = ESP_BLE_AD_TYPE_SOL_SRV_UUID;  // 0x14
+			advertisementData.addData(std::string(cdata, 2) + std::string((char *)&uuid.getNative()->uuid.uuid16,2));
+			break;
+		}
+
+		case 128: {
+			// [Len] [0x15] [UUID128] data
+			cdata[0] = 17;
+			cdata[1] = ESP_BLE_AD_TYPE_128SOL_SRV_UUID;  // 0x15
+			advertisementData.addData(std::string(cdata, 2) + std::string((char *)uuid.getNative()->uuid.uuid128,16));
+			break;
+		}
+
+		default:
+			return;
+	}
+}
+#endif
 

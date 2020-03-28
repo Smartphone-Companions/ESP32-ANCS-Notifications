@@ -71,6 +71,8 @@ class BLENotifications {
         */
         const char * getNotificationCategoryDescription(NotificationCategory category) const;
 
+	private:
+
         
     private:
         ble_notifications_state_changed_t cbStateChanged;
