@@ -62,8 +62,8 @@ void onBLEStateChanged(BLENotifications::State state) {
 }
 
 // Setup a callback for when a notification arrives
-void onNotificationArrived(const Notification * notification) {
-    Serial.println(notification->title.c_str());
+void onNotificationArrived(const ArduinoNotification * notification, Notification * rawData) {
+    Serial.println(notification->title);
 }
 
 // Register the callback to be informed when a notification arrives

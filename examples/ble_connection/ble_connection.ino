@@ -51,11 +51,16 @@ void onBLEStateChanged(BLENotifications::State state) {
 
 
 // A notification arrived from the mobile device, ie a social media notification or incoming call.
-void onNotificationArrived(const Notification * notification) {
+// parameters:
+//  - notification: an Arduino-friendly structure containing notification information. Do not keep a
+//                  pointer to this data - it will be destroyed after this function.
+//  - rawNotificationData: a pointer to the underlying data. It contains the same information, but is
+//                         not beginner-friendly. For advanced use-cases.
+void onNotificationArrived(const ArduinoNotification * notification, const Notification * rawNotificationData) {
     Serial.print("Got notification: ");   
-    Serial.println(notification->title.c_str()); // The title, ie name of who sent the message
-    Serial.println(notification->message.c_str()); // The detail, ie "be home for dinner at 7".
-    Serial.println(notification->type.c_str());  // Which app sent it
+    Serial.println(notification->title); // The title, ie name of who sent the message
+    Serial.println(notification->message); // The detail, ie "be home for dinner at 7".
+    Serial.println(notification->type);  // Which app sent it
     Serial.println(notifications.getNotificationCategoryDescription(notification->category));  // ie "social media"
     Serial.println(notification->categoryCount); // How may other notifications are there from this app (ie badge number)
     if (notification->category == CategoryIDIncomingCall) {
@@ -70,11 +75,11 @@ void onNotificationArrived(const Notification * notification) {
 
 
 // A notification was cleared
-void onNotificationRemoved(const Notification * notification) {
+void onNotificationRemoved(const ArduinoNotification * notification, const Notification * rawNotificationData) {
      Serial.print("Removed notification: ");   
-     Serial.println(notification->title.c_str());
-     Serial.println(notification->message.c_str());
-     Serial.println(notification->type.c_str());  
+     Serial.println(notification->title);
+     Serial.println(notification->message);
+     Serial.println(notification->type);  
 }
 
 

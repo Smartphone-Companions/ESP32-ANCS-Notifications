@@ -7,6 +7,7 @@
 #define BLE_NOTIFICATION_H_
 
 #include <string>
+#include <WString.h> // Arduino string
 
 /**
  * Notification category, based on ANCS values, but could also be used for Android.
@@ -92,16 +93,47 @@ struct Notification {
 };
 
 /**
+ * C++ strings might be confusing for beginners, so this is the same struct as Notification, but using
+ * Arduino strings. We still use Notification for the underlying logic, because of the heap fragmentation issues
+ * with Arduino strings.
+ */
+struct ArduinoNotification {
+    String title;
+    String message;
+    String type;
+	uint32_t eventFlags; /**< Bitfield of ANCS::EventFlags flags. */
+    time_t time;
+    uint32_t uuid = 0;
+    bool showed = false;
+    bool isComplete = false;
+	NotificationCategory category; /**< If it is a call, social media, email, etc. */
+	uint8_t categoryCount; /**< Number of other notifications in this category (ie badge number count). */
+	
+	ArduinoNotification(const Notification & src) {
+		title = String(src.title.c_str());
+		message = String(src.message.c_str());
+		type = String(src.type.c_str());
+		eventFlags = src.eventFlags;
+		time = src.time;
+		uuid = src.uuid;
+		showed = src.showed;
+		isComplete = src.isComplete;
+		category = src.category;
+		categoryCount = src.categoryCount;
+	}
+};
+
+/**
  * Callback for when a notification arrives.
  * @param notification The notification that just arrived.
  */
-typedef void (*ble_notification_arrived_t)(const Notification * notification);
+typedef void (*ble_notification_arrived_t)(const ArduinoNotification * notification, const Notification * rawNotificationData);
 
 /**
  * Callback for when a notification was removed.
  * @param notification The notification that was removed.
  */
-typedef void (*ble_notification_removed_t)(const Notification * notification);
+typedef void (*ble_notification_removed_t)(const ArduinoNotification * notification, const Notification * rawNotificationData);
 
 
 
