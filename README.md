@@ -13,10 +13,20 @@ This library is designed to follow the standard Arduino library style, and be as
 
 ## Installation
 
+### ESP-32 Core Library
 You need to install the ESP32 core libraries. If you are getting build errors, it's possible you have an old version of the core libraries without BLE support. The install instructions for your specific OS are here:
 https://github.com/espressif/arduino-esp32
 
-Next, put this unzipped library code into your ~/arduino/libraries/ folder, under an ESP32-ANCS-Notifications subfolder:
+### Using Arduino Library Manager
+
+From Arduino IDE, go to menu Sketch -> Include Library -> Manage Libraries...
+In Library Manager Window, search "ANCS" in the search form then select "ESP32 BLE ANCS Notifications"
+Click "Install" button.
+
+### Manual installation
+
+Download zip file from this repository by selecting Clone or download dropdown at the top of repository, select Download ZIP
+From Arduino IDE, select menu Sketch -> Include Library -> Add .ZIP Library....
 
 Or use git:
  ```
