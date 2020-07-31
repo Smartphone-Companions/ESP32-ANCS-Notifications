@@ -19,14 +19,14 @@ https://github.com/espressif/arduino-esp32
 
 ### Using Arduino Library Manager
 
-From Arduino IDE, go to menu Sketch -> Include Library -> Manage Libraries...
-In Library Manager Window, search "ANCS" in the search form then select "ESP32 BLE ANCS Notifications"
-Click "Install" button.
+From Arduino IDE, go to menu *Sketch -> Include Library -> Manage Libraries...*
+In Library Manager Window, search *"ANCS"* in the search form then select *"ESP32 BLE ANCS Notifications"*
+Click *"Install"* button.
 
 ### Manual installation
 
-Download zip file from this repository by selecting Clone or download dropdown at the top of repository, select Download ZIP
-From Arduino IDE, select menu Sketch -> Include Library -> Add .ZIP Library....
+Download zip file from this repository by selecting *"Clone or download"* dropdown at the top of repository, select *"Download ZIP"*
+From Arduino IDE, select menu *Sketch -> Include Library -> Add .ZIP Library...*
 
 Or use git:
  ```
