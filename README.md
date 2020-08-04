@@ -25,7 +25,7 @@ Click *"Install"* button.
 
 ### Manual installation
 
-Download zip file from this repository by selecting *"Clone or download"* dropdown at the top of repository, select *"Download ZIP"*
+Download zip file from this repository by selecting the green *"Code"* dropdown at the top of repository, select *"Download ZIP"*
 From Arduino IDE, select menu *Sketch -> Include Library -> Add .ZIP Library...*
 
 Or use git:
