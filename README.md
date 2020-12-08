@@ -1,3 +1,5 @@
+[![arduino-library-badge](https://www.ardu-badge.com/badge/ESP32%20BLE%20ANCS%20Notifications.svg?)](https://www.ardu-badge.com/badge/ESP32%20BLE%20ANCS%20Notifications)
+
 # ESP32 ANCS Notifications
 Easy-to-use Arduino library for interfacing an ESP 32 with Bluetooth LE mobile device notifications.
 
