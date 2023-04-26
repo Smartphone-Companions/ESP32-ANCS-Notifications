@@ -3,7 +3,9 @@
 
 #include "ble_notification.h"
 
-#include "FreeRTOS.h" // For asynchronous tasks
+#include "freertos/FreeRTOS.h" // For asynchronous tasks
+#include "freertos/task.h"
+#include "Arduino.h"
 
 class BLEAddress;
 class BLERemoteCharacteristic;
