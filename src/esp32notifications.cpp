@@ -108,11 +108,13 @@ bool BLENotifications::begin(const char * name) {
 	BLEDevice::setSecurityCallbacks(new NotificationSecurityCallbacks()); // @todo memory leak?
 	
 	startAdvertising();
+	return true;
 }
 
 bool BLENotifications::stop() {
 	ESP_LOGI(LOG_TAG, "stop()");
-	BLEDevice::deinit(false);	
+	BLEDevice::deinit(false);
+	return true;
 }
 
 
