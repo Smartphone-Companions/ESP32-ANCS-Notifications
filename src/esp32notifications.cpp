@@ -186,7 +186,7 @@ void setServiceSolicitation(BLEAdvertisementData & advertisementData, BLEUUID uu
 			// [Len] [0x14] [UUID16] data
 			cdata[0] = 3;
 			cdata[1] = ESP_BLE_AD_TYPE_SOL_SRV_UUID;  // 0x14
-			advertisementData.addData(String(cdata, 2) + String((char *)&uuid.getNative()->uuid.uuid16,2));
+			advertisementData.addData(std::string((String(cdata, 2) + String((char *)&uuid.getNative()->uuid.uuid16,2)).c_str()));
 			break;
 		}
 
@@ -194,7 +194,7 @@ void setServiceSolicitation(BLEAdvertisementData & advertisementData, BLEUUID uu
 			// [Len] [0x15] [UUID128] data
 			cdata[0] = 17;
 			cdata[1] = ESP_BLE_AD_TYPE_128SOL_SRV_UUID;  // 0x15
-			advertisementData.addData(String(cdata, 2) + String((char *)uuid.getNative()->uuid.uuid128,16));
+			advertisementData.addData(std::string((String(cdata, 2) + String((char *)uuid.getNative()->uuid.uuid128,16)).c_str()));
 			break;
 		}
 
