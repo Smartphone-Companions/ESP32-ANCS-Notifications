@@ -89,7 +89,33 @@ void setup() {
 
 Note that the Espressif BLE libraries are very large, so you may need to increase your partition scheme to "Large" in the Arduino IDE.
 
-See the ble_connection example for a more fully-featured example.
+See the `examples/ios_notifications` sketch for a minimal Serial-only example, or `examples/ble_connection` for button-driven call actions.
+
+## iOS Setup
+
+### Discovery (CoreBluetooth Apps)
+iOS does not reliably list generic BLE peripherals in the standard Bluetooth Settings screen. Use a CoreBluetooth app such as nRF Connect for discovery.
+
+Recommended discovery/testing flow:
+1. Upload `examples/ios_notifications/ios_notifications.ino`.
+2. Open a BLE scanner app (nRF Connect) and connect to the ESP32 device name you used in `notifications.begin(...)`.
+3. When prompted, accept pairing/bonding and tap “Allow Notifications”.
+4. If you disconnect, the example calls `startAdvertising()` to make the device visible again.
+
+### Pairing / Bonding Helper
+If iOS does not prompt to pair, use the dedicated helper to force an encrypted characteristic access:
+1. Upload `examples/bonding_helper/bonding_helper.ino`.
+2. In nRF Connect, connect and READ or WRITE the helper characteristic.
+3. Accept the pairing/bonding prompt, then disconnect.
+4. Re-flash the ANCS example and connect normally (bonding keys should persist).
+
+### “Show Previews” Behavior
+If iOS “Show Previews” is set to **Never** or **When Unlocked**, Apple may send ANCS notifications with empty message bodies. The library still invokes the callback as soon as the app identifier and/or title are available, with `notification->message` left empty.
+
+### Troubleshooting
+- If notifications do not appear: iOS Settings → Bluetooth → (i) → “Forget This Device”, then re-pair via nRF Connect.
+- Ensure the iOS app has notifications enabled (Settings → Notifications).
+- Ensure “Show Previews” allows content if you expect message bodies.
 
 
 
@@ -99,4 +125,3 @@ See the ble_connection example for a more fully-featured example.
 Based on the work of CarWatch, Hackwatch, and S-March. This project was created to hide the complicated BLE notification internals behind a standard, easy-to-use Arduino library.
 
 To see a real-world project, https://github.com/jhud/hackwatch uses this library.
-

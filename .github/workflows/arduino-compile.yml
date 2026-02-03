@@ -1,0 +1,29 @@
+name: Arduino Compile
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        esp32_core: ["3.3.6", "2.0.17"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: arduino/setup-arduino-cli@v1
+
+      - name: Install ESP32 core
+        run: |
+          arduino-cli config init
+          arduino-cli config set board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32@${{ matrix.esp32_core }}
+
+      - name: Compile examples
+        run: |
+          arduino-cli compile --fqbn esp32:esp32:esp32 --library . examples/ble_connection/ble_connection.ino
+          arduino-cli compile --fqbn esp32:esp32:esp32 --library . examples/ios_notifications/ios_notifications.ino
