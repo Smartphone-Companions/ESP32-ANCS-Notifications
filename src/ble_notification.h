@@ -88,6 +88,10 @@ struct Notification
     uint32_t uuid = 0;
     bool showed = false;
     bool isComplete = false;
+    uint8_t attributeFlags = 0; /**< Bitfield of received ANCS attributes. */
+    uint16_t expectedTypeLength = 0;
+    uint16_t expectedTitleLength = 0;
+    uint16_t expectedMessageLength = 0;
     NotificationCategory category; /**< If it is a call, social media, email, etc. */
     uint8_t categoryCount;         /**< Number of other notifications in this category (ie badge number count). */
 };

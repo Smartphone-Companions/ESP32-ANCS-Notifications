@@ -78,6 +78,8 @@ private:
     ble_notification_arrived_t cbNotification;
     ble_notification_removed_t cbRemoved;
 
+    String deviceName;
+
     class BLEServer *server;
     class ANCSBLEClient *client;
 

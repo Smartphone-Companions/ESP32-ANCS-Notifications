@@ -13,6 +13,10 @@ class ANCSNotificationQueue;
 
 #include "BLEUUID.h"
 
+#ifndef ANCS_ATTRIBUTE_MAX_LEN
+#define ANCS_ATTRIBUTE_MAX_LEN 128
+#endif
+
 /**
  * Internal module for creating and managing an ANCS client connection singleton.
  * This needs to run asynchronously as a FreeRTOS task.

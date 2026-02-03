@@ -1,6 +1,7 @@
 // Based on the ANCS work of https://github.com/S-March and the CarWatch project
 
 #include "ble_security.h"
+#include "ble_compat.h"
 #include "ancs_ble_client.h"
 #include "ancs_notification_queue.h"
 
@@ -15,6 +16,10 @@
 #include <Arduino.h> // Only for development
 
 static char LOG_TAG[] = "ANCSBLEClient";
+
+static const uint8_t kAttrFlagType = 1 << 0;
+static const uint8_t kAttrFlagTitle = 1 << 1;
+static const uint8_t kAttrFlagMessage = 1 << 2;
 
 // Fixed service IDs for the Apple ANCS service
 const BLEUUID notificationSourceCharacteristicUUID("9FBF120D-6301-42D9-8C58-25E699A21DBD");
@@ -79,17 +84,21 @@ void ANCSBLEClient::startClientTask(void *params)
 void ANCSBLEClient::setup(const BLEAddress *address)
 {
 	BLEClient *pClient = BLEDevice::createClient();
-	BLEDevice::setSecurityCallbacks(new NotificationSecurityCallbacks()); // @todo memory leak?
+	ble_compat::installSecurityCallbacks(); // @todo memory leak?
 
 	BLESecurity *pSecurity = new BLESecurity();
-	pSecurity->setAuthenticationMode(ESP_LE_AUTH_REQ_SC_BOND);
-	pSecurity->setCapability(ESP_IO_CAP_IO);
-	pSecurity->setRespEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
+	ble_compat::configureSecurityClient(pSecurity);
 	// Connect to the remote BLE Server.
 	if (!pClient->connect(*address))
 	{
 		ESP_LOGW(LOG_TAG, "Failed to connect to remote BLE server.");
 		return;
+	}
+
+	const bool secureOk = ble_compat::secureConnectionIfSupported(pClient, 0);
+	if (!secureOk)
+	{
+		ESP_LOGW(LOG_TAG, "secureConnection() failed; ANCS may not work without pairing/bonding.");
 	}
 
 	/** BEGIN ANCS SERVICE **/
@@ -161,9 +170,12 @@ void ANCSBLEClient::retrieveExtraNotificationData(Notification &pending)
 
 	const uint8_t vIdentifier[] = {0x0, uuid[0], uuid[1], uuid[2], uuid[3], ANCS::NotificationAttributeIDAppIdentifier};
 	pControlPointCharacteristic->writeValue((uint8_t *)vIdentifier, 6, true);
-	const uint8_t vTitle[] = {0x0, uuid[0], uuid[1], uuid[2], uuid[3], ANCS::NotificationAttributeIDTitle, 0x0, 0x10};
+	const uint16_t maxAttrLen = ANCS_ATTRIBUTE_MAX_LEN;
+	const uint8_t vTitle[] = {0x0, uuid[0], uuid[1], uuid[2], uuid[3], ANCS::NotificationAttributeIDTitle,
+														uint8_t(maxAttrLen & 0xFF), uint8_t((maxAttrLen >> 8) & 0xFF)};
 	pControlPointCharacteristic->writeValue((uint8_t *)vTitle, 8, true);
-	const uint8_t vMessage[] = {0x0, uuid[0], uuid[1], uuid[2], uuid[3], ANCS::NotificationAttributeIDMessage, 0x0, 0x10};
+	const uint8_t vMessage[] = {0x0, uuid[0], uuid[1], uuid[2], uuid[3], ANCS::NotificationAttributeIDMessage,
+															uint8_t(maxAttrLen & 0xFF), uint8_t((maxAttrLen >> 8) & 0xFF)};
 	pControlPointCharacteristic->writeValue((uint8_t *)vMessage, 8, true);
 	const uint8_t vDate[] = {0x0, uuid[0], uuid[1], uuid[2], uuid[3], ANCS::NotificationAttributeIDDate};
 	pControlPointCharacteristic->writeValue((uint8_t *)vDate, 6, true);
@@ -175,6 +187,12 @@ void ANCSBLEClient::onDataSourceNotify(
 		size_t length,
 		bool isNotify)
 {
+	if (length < 8)
+	{
+		ESP_LOGW(LOG_TAG, "Data source notify too short: %d", (int)length);
+		return;
+	}
+
 	std::string message;
 
 	uint32_t messageId = pData[4];
@@ -182,38 +200,101 @@ void ANCSBLEClient::onDataSourceNotify(
 	messageId = messageId << 16 | pData[2];
 	messageId = messageId << 24 | pData[1];
 
-	for (int i = 8; i < length; i++)
+	const uint8_t attributeId = pData[5];
+	const uint16_t attributeLength = uint16_t(pData[6]) | (uint16_t(pData[7]) << 8);
+	const size_t payloadLength = length - 8;
+
+	for (size_t i = 8; i < length; i++)
 	{
 		message += (char)pData[i];
 	}
 
-	ESP_LOGD(LOG_TAG, "ID: %d raw message: %s type==%d", messageId, message.c_str(), pData[5]);
+	ESP_LOGD(LOG_TAG, "ID: %d raw message: %s type==%d", messageId, message.c_str(), attributeId);
 
 	Notification *notification = notificationQueue->getNotification(messageId);
+	if (notification == nullptr)
+	{
+		ESP_LOGW(LOG_TAG, "No notification found for id %d", messageId);
+		return;
+	}
 
-	switch (pData[5])
+	std::string *target = nullptr;
+	uint16_t *expectedLength = nullptr;
+	uint8_t attributeFlag = 0;
+
+	switch (attributeId)
 	{
 	case ANCS::NotificationAttributeIDAppIdentifier:
-		notification->type = message;
-		ESP_LOGD(LOG_TAG, "got type: %s", message.c_str());
+		target = &notification->type;
+		expectedLength = &notification->expectedTypeLength;
+		attributeFlag = kAttrFlagType;
 		break;
-	case 0x1:
-		notification->title = message;
-		ESP_LOGD(LOG_TAG, "got title: %s", message.c_str());
+	case ANCS::NotificationAttributeIDTitle:
+		target = &notification->title;
+		expectedLength = &notification->expectedTitleLength;
+		attributeFlag = kAttrFlagTitle;
 		break;
-	case 0x3:
-		notification->message = message;
-		ESP_LOGD(LOG_TAG, "got message: %s", message.c_str());
+	case ANCS::NotificationAttributeIDMessage:
+		target = &notification->message;
+		expectedLength = &notification->expectedMessageLength;
+		attributeFlag = kAttrFlagMessage;
+		break;
+	default:
 		break;
 	}
-	if (!notification->title.empty() && !notification->message.empty())
+
+	if (target != nullptr)
 	{
-		if (notificationCB && notification->isComplete == false)
+		if (*expectedLength == 0)
 		{
-			ESP_LOGI(LOG_TAG, "got a full notification: %s - %s ", notification->title.c_str(), notification->message.c_str());
+			*expectedLength = attributeLength;
+			if (!target->empty())
+			{
+				target->clear();
+			}
+		}
+
+		if (attributeLength == 0)
+		{
+			notification->attributeFlags |= attributeFlag;
+		}
+		else if (payloadLength > 0)
+		{
+			const size_t currentLength = target->size();
+			size_t appendLength = payloadLength;
+			if (currentLength + appendLength > *expectedLength)
+			{
+				appendLength = *expectedLength - currentLength;
+			}
+			target->append(reinterpret_cast<const char *>(pData + 8), appendLength);
+
+			if (target->size() >= *expectedLength)
+			{
+				notification->attributeFlags |= attributeFlag;
+			}
+		}
+	}
+
+	const bool hasType = (notification->attributeFlags & kAttrFlagType) != 0;
+	const bool hasTitle = (notification->attributeFlags & kAttrFlagTitle) != 0;
+	const bool hasMessage = (notification->attributeFlags & kAttrFlagMessage) != 0;
+	// iOS "Show Previews" off can send empty message/title with a valid app identifier.
+	const bool hasAnyMetadata = hasType || hasTitle || hasMessage;
+	const bool hasFullPayload = hasType && (hasTitle || hasMessage);
+
+	if (hasAnyMetadata && (!notification->showed || (notification->showed && !notification->isComplete && hasFullPayload)))
+	{
+		if (notificationCB)
+		{
+			ESP_LOGI(LOG_TAG, "got a notification: %s - %s ", notification->title.c_str(), notification->message.c_str());
 			const ArduinoNotification arduinoNotification = ArduinoNotification(*notification);
 			notificationCB(&arduinoNotification, notification);
 		}
+		notification->showed = true;
+	}
+
+	if (hasFullPayload)
+	{
 		notification->isComplete = true;
 	}
 }

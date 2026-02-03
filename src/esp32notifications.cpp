@@ -9,6 +9,7 @@
 #include "esp32notifications.h"
 #include "ancs_ble_client.h"
 #include "ble_security.h"
+#include "ble_compat.h"
 
 #include "BLEAddress.h"
 #include "BLEDevice.h"
@@ -16,6 +17,8 @@
 #include "BLEClient.h"
 #include "BLEUtils.h"
 #include "BLE2902.h"
+
+#include <cstring>
 
 #include <esp_gatts_api.h>
 
@@ -26,6 +29,7 @@ extern const BLEUUID ancsServiceUUID;
 #ifndef BLE_LIB_HAS_SERVICE_SOLICITATION
 // Use a static function, instead of doing a whole private implementation just for a this one small patch.
 static void setServiceSolicitation(class BLEAdvertisementData &advertisementData, BLEUUID uuid);
+static void addAdvertisementDataBinary(class BLEAdvertisementData &advertisementData, const uint8_t *data, size_t len);
 #endif
 
 class MyServerCallbacks : public BLEServerCallbacks
@@ -113,9 +117,10 @@ bool BLENotifications::begin(const char *name)
 {
 	ESP_LOGI(LOG_TAG, "begin()");
 	BLEDevice::init(name);
+	deviceName = String(name);
 	server = BLEDevice::createServer();
 	server->setCallbacks(new MyServerCallbacks(this));
-	BLEDevice::setSecurityCallbacks(new NotificationSecurityCallbacks()); // @todo memory leak?
+	ble_compat::installSecurityCallbacks(); // @todo memory leak?
 
 	startAdvertising();
 	return true;
@@ -170,7 +175,15 @@ void BLENotifications::startAdvertising()
 	}
 
 	BLEAdvertisementData oAdvertisementData = BLEAdvertisementData();
-	oAdvertisementData.setFlags(0x01);
+#if defined(ESP_BLE_ADV_FLAG_GEN_DISC) && defined(ESP_BLE_ADV_FLAG_BREDR_NOT_SPT)
+	oAdvertisementData.setFlags(ESP_BLE_ADV_FLAG_GEN_DISC | ESP_BLE_ADV_FLAG_BREDR_NOT_SPT);
+#else
+	oAdvertisementData.setFlags(0x06);
+#endif
+	if (deviceName.length() > 0)
+	{
+		oAdvertisementData.setName(deviceName);
+	}
 
 #ifdef BLE_LIB_HAS_SERVICE_SOLICITATION
 	oAdvertisementData.setServiceSolicitation(ANCSBLEClient::getAncsServiceUUID());
@@ -180,11 +193,17 @@ void BLENotifications::startAdvertising()
 
 	pAdvertising->setAdvertisementData(oAdvertisementData);
 
+	if (deviceName.length() > 0)
+	{
+		BLEAdvertisementData scanResponseData;
+		scanResponseData.setName(deviceName);
+		pAdvertising->setScanResponse(true);
+		pAdvertising->setScanResponseData(scanResponseData);
+	}
+
 	// Set security
 	BLESecurity *pSecurity = new BLESecurity();
-	pSecurity->setAuthenticationMode(ESP_LE_AUTH_REQ_SC_BOND);
-	pSecurity->setCapability(ESP_IO_CAP_OUT);
-	pSecurity->setInitEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
+	ble_compat::configureSecurityServer(pSecurity);
 
 	// Start advertising
 	pAdvertising->start();
@@ -196,29 +215,36 @@ void BLENotifications::startAdvertising()
 #ifndef BLE_LIB_HAS_SERVICE_SOLICITATION
 void setServiceSolicitation(BLEAdvertisementData &advertisementData, BLEUUID uuid)
 {
-	char cdata[2];
+	uint8_t data[18];
 	switch (uuid.bitSize())
 	{
 	case 16:
 	{
 		// [Len] [0x14] [UUID16] data
-		cdata[0] = 3;
-		cdata[1] = ESP_BLE_AD_TYPE_SOL_SRV_UUID; // 0x14
-		advertisementData.addData(String(cdata, 2) + String((char *)&uuid.getNative()->uuid.uuid16, 2));
+		data[0] = 3;
+		data[1] = ESP_BLE_AD_TYPE_SOL_SRV_UUID; // 0x14
+		memcpy(&data[2], &uuid.getNative()->uuid.uuid16, 2);
+		addAdvertisementDataBinary(advertisementData, data, 4);
 		break;
 	}
 
 	case 128:
 	{
 		// [Len] [0x15] [UUID128] data
-		cdata[0] = 17;
-		cdata[1] = ESP_BLE_AD_TYPE_128SOL_SRV_UUID; // 0x15
-		advertisementData.addData(String(cdata, 2) + String((char *)uuid.getNative()->uuid.uuid128, 16));
+		data[0] = 17;
+		data[1] = ESP_BLE_AD_TYPE_128SOL_SRV_UUID; // 0x15
+		memcpy(&data[2], uuid.getNative()->uuid.uuid128, 16);
+		addAdvertisementDataBinary(advertisementData, data, 18);
 		break;
 	}
 
 	default:
 		return;
 	}
+}
+
+void addAdvertisementDataBinary(BLEAdvertisementData &advertisementData, const uint8_t *data, size_t len)
+{
+	advertisementData.addData((char *)data, len);
 }
 #endif
