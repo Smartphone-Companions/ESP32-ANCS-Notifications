@@ -66,6 +66,8 @@ public:
 
     void actionPositive(uint32_t uuid);
     void actionNegative(uint32_t uuid);
+    // Optional keep-alive to reduce idle disconnects.
+    void keepAlive();
 
     /**
      * Given a category, return a description of the category in English
@@ -82,6 +84,7 @@ private:
     class ANCSBLEClient *client;
 
     bool isAdvertising;
+    const char *deviceName;
 
     friend class MyServerCallbacks; // Allow internal handlers to access the callbacks of the main class
 };

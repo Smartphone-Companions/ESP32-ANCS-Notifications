@@ -29,6 +29,8 @@ public:
 	void setNotificationRemovedCallback(ble_notification_removed_t cbNotification);
 
 	void performAction(uint32_t notifyUUID, uint8_t actionID);
+	// Lightweight keep-alive: read RSSI to keep link active without changing ANCS behavior.
+	void keepAlive();
 
 public:
 	static BLEUUID getAncsServiceUUID(); // To be able to advertise it
@@ -65,6 +67,7 @@ private:
 	ble_notification_removed_t removedCB;
 
 	class BLERemoteCharacteristic *pControlPointCharacteristic;
+	class BLEClient *pClient;
 };
 
 #endif // ANCS_BLE_CLIENT_H_

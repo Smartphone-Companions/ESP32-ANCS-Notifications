@@ -11,6 +11,8 @@ This library is designed to follow the standard Arduino library style, and be as
   + Easily start re-advertising the ESP 32 device if BLE connection is lost.
   + Apple ANCS notification support, with advanced message details.
   + Use actions to accept or reject incoming calls.
+  + iOS Settings visibility improvements (local name in primary ADV + adopted 16-bit service UUID).
+  + Forces bonding/encryption on connect to trigger the iOS "Allow Notifications" prompt.
 
 
 ## Installation
@@ -91,6 +93,15 @@ Note that the Espressif BLE libraries are very large, so you may need to increas
 
 See the ble_connection example for a more fully-featured example.
 
+## iOS Notes (Local Fork)
+
+This fork adjusts BLE advertising and security to improve iOS pairing and discoverability:
+
+- **Discoverability in iOS Settings**: iOS often uses passive scans and ignores scan response data. The local name is placed in the **primary advertisement** and a 16-bit adopted service UUID (Heart Rate, `0x180D`) is advertised to increase the chance of showing in **Settings → Bluetooth**.
+- **ANCS permission prompt**: ANCS requires an encrypted/bonded link. The server forces encryption on connect and uses **Just-Works bonding** (`ESP_LE_AUTH_BOND` + `ESP_IO_CAP_NONE`) to make pairing reliable.
+
+If you previously paired and no permission prompt appears, "Forget" the device in iOS and re-pair.
+
 
 
 
@@ -99,4 +110,3 @@ See the ble_connection example for a more fully-featured example.
 Based on the work of CarWatch, Hackwatch, and S-March. This project was created to hide the complicated BLE notification internals behind a standard, easy-to-use Arduino library.
 
 To see a real-world project, https://github.com/jhud/hackwatch uses this library.
-
