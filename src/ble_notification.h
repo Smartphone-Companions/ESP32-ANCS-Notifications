@@ -83,13 +83,13 @@ struct Notification
     std::string title;
     std::string message;
     std::string type;
-    uint32_t eventFlags; /**< Bitfield of ANCS::EventFlags flags. */
-    time_t time;
+    uint32_t eventFlags = 0; /**< Bitfield of ANCS::EventFlags flags. */
+    time_t time = 0;
     uint32_t uuid = 0;
     bool showed = false;
     bool isComplete = false;
-    NotificationCategory category; /**< If it is a call, social media, email, etc. */
-    uint8_t categoryCount;         /**< Number of other notifications in this category (ie badge number count). */
+    NotificationCategory category = CategoryIDOther; /**< If it is a call, social media, email, etc. */
+    uint8_t categoryCount = 0;         /**< Number of other notifications in this category (ie badge number count). */
 };
 
 /**
@@ -102,13 +102,13 @@ struct ArduinoNotification
     String title;
     String message;
     String type;
-    uint32_t eventFlags; /**< Bitfield of ANCS::EventFlags flags. */
-    time_t time;
+    uint32_t eventFlags = 0; /**< Bitfield of ANCS::EventFlags flags. */
+    time_t time = 0;
     uint32_t uuid = 0;
     bool showed = false;
     bool isComplete = false;
-    NotificationCategory category; /**< If it is a call, social media, email, etc. */
-    uint8_t categoryCount;         /**< Number of other notifications in this category (ie badge number count). */
+    NotificationCategory category = CategoryIDOther; /**< If it is a call, social media, email, etc. */
+    uint8_t categoryCount = 0;         /**< Number of other notifications in this category (ie badge number count). */
 
     ArduinoNotification(const Notification &src)
     {
