@@ -1,80 +1,45 @@
-
-#define LOG_LOCAL_LEVEL ESP_LOG_VERBOSE
-
-// NKolban's original library has a setServiceSolicitation method. As of writing, this is not in the
-// Espressif core libs. If you are using NKolban's branch of the library, or if this moves into
-// the core libraries eventually, uncomment this.
-// #define BLE_LIB_HAS_SERVICE_SOLICITATION
-
 #include "esp32notifications.h"
 #include "ancs_ble_client.h"
-#include "ble_security.h"
+#include "NimBLEDevice.h"
+#include "NimBLEServer.h"
+#include "NimBLEAdvertising.h"
+#include "esp_log.h"
 
-#include "BLEAddress.h"
-#include "BLEDevice.h"
-#include "BLEServer.h"
-#include "BLEClient.h"
-#include "BLEUtils.h"
-#include "BLE2902.h"
+static const char *TAG = "ANCS";
 
-#include <esp_gatts_api.h>
-
-static char LOG_TAG[] = "BLENotifications";
-
-extern const BLEUUID ancsServiceUUID;
-
-#ifndef BLE_LIB_HAS_SERVICE_SOLICITATION
-// Use a static function, instead of doing a whole private implementation just for a this one small patch.
-static void setServiceSolicitation(class BLEAdvertisementData &advertisementData, BLEUUID uuid);
-#endif
-
-class MyServerCallbacks : public BLEServerCallbacks
-{
-
+class MyServerCallbacks : public NimBLEServerCallbacks {
 public:
-	BLENotifications *instance;
-
-	MyServerCallbacks(BLENotifications *parent)
-			: instance(parent)
-	{
-	}
-
-	void onConnect(BLEServer *pServer, esp_ble_gatts_cb_param_t *param)
-	{
-		ESP_LOGI(LOG_TAG, "Device connected");
-		instance->client = new ANCSBLEClient(); // @todo memory leaks?
-		instance->client->setNotificationArrivedCallback(instance->cbNotification);
-		instance->client->setNotificationRemovedCallback(instance->cbRemoved);
-		::xTaskCreatePinnedToCore(&ANCSBLEClient::startClientTask, "ClientTask", 10000, new BLEAddress(param->connect.remote_bda), 5, &instance->client->clientTaskHandle, 0);
-
-		delay(1000);
-
-		ESP_LOGI(LOG_TAG, "Set up client");
-
-		if (instance->cbStateChanged)
-		{
-			instance->cbStateChanged(BLENotifications::StateConnected);
-		}
-	};
-
-	void onDisconnect(BLEServer *pServer)
-	{
-		::vTaskDelete(instance->client->clientTaskHandle);
-		instance->client->clientTaskHandle = nullptr;
-		ESP_LOGI(LOG_TAG, "Device disconnected");
-		if (instance->cbStateChanged)
-		{
-			instance->cbStateChanged(BLENotifications::StateDisconnected);
-		}
-		delete instance->client;
-		instance->client = nullptr;
-	}
+    explicit MyServerCallbacks(BLENotifications *parent) : instance(parent) {}
+    void onConnect(NimBLEServer *server, NimBLEConnInfo &info) override {
+        if (server->getConnectedCount() > 1) {
+            server->disconnect(info.getConnHandle());
+            return;
+        }
+        instance->isAdvertising = false;
+        handle = info.getConnHandle();
+        instance->client->connected(handle);
+        auto cb = instance->cbStateChanged.load();
+        if (cb) cb(BLENotifications::StateConnected);
+    }
+    void onDisconnect(NimBLEServer *, NimBLEConnInfo &info, int) override {
+        if (info.getConnHandle() != handle) return;
+        handle = 0xFFFF;
+        if (instance->client) instance->client->disconnected();
+        auto cb = instance->cbStateChanged.load();
+        if (cb && !instance->stopped.load()) cb(BLENotifications::StateDisconnected);
+    }
+    void onAuthenticationComplete(NimBLEConnInfo &info) override {
+        if (info.getConnHandle() != handle || !instance->client) return;
+        instance->client->authenticated(info.isEncrypted());
+        if (info.isEncrypted()) ESP_LOGI(TAG, "BLE link encrypted");
+        else ESP_LOGW(TAG, "Pairing failed; forget device on iPhone and retry");
+    }
+private:
+    uint16_t handle = 0xFFFF;
+    BLENotifications *instance;
 };
 
-BLENotifications::BLENotifications()
-		: cbStateChanged(nullptr), client(nullptr), isAdvertising(false)
-{
-}
+BLENotifications::BLENotifications() = default;
 
 const char *BLENotifications::getNotificationCategoryDescription(NotificationCategory category) const
 {
@@ -109,116 +74,83 @@ const char *BLENotifications::getNotificationCategoryDescription(NotificationCat
 	}
 }
 
-bool BLENotifications::begin(const char *name)
-{
-	ESP_LOGI(LOG_TAG, "begin()");
-	BLEDevice::init(name);
-	server = BLEDevice::createServer();
-	server->setCallbacks(new MyServerCallbacks(this));
-	BLEDevice::setSecurityCallbacks(new NotificationSecurityCallbacks()); // @todo memory leak?
-
-	startAdvertising();
-	return true;
+bool BLENotifications::begin(const char *name) {
+    if (begun || stopped.load() || ANCSBLEClient::instance || !name) return false;
+    deviceName = std::string(name).substr(0, 29);
+    if (!NimBLEDevice::init(name)) return false;
+    // Headless C3: encrypted, bonded Just Works pairing; no claimed display/keypad.
+    NimBLEDevice::setSecurityAuth(true, false, true);
+    NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT);
+    client = new ANCSBLEClient();
+    client->setNotificationArrivedCallback(cbNotification.load());
+    client->setNotificationRemovedCallback(cbRemoved.load());
+    if (!client->start()) {
+        delete client; client = nullptr;
+        NimBLEDevice::deinit(true);
+        return false;
+    }
+    server = NimBLEDevice::createServer();
+    serverCallbacks = new MyServerCallbacks(this);
+    server->setCallbacks(serverCallbacks, false);
+    begun = true;
+    startAdvertising();
+    if (!isAdvertising.load()) { stop(); return false; }
+    return true;
 }
 
-bool BLENotifications::stop()
-{
-	ESP_LOGI(LOG_TAG, "stop()");
-	BLEDevice::deinit(false);
-	return true;
+bool BLENotifications::stop() {
+    if (!begun) return true;
+    // Calling stop() from an application notification callback would join itself.
+    // The worker detects this and leaves BLE intact.
+    stopped.store(true);
+    if (!client->stop()) {
+        ESP_LOGW(TAG, "Worker still running; call stop() again from loop()");
+        return false;
+    }
+    if (!NimBLEDevice::deinit(false)) return false;
+    NimBLEDevice::deinit(true); // Host is stopped; now release owned objects.
+    delete client; client = nullptr;
+    delete serverCallbacks; serverCallbacks = nullptr;
+    server = nullptr; begun = false; isAdvertising = false;
+    return true;
 }
-
-void BLENotifications::setConnectionStateChangedCallback(ble_notifications_state_changed_t callback)
-{
-	cbStateChanged = callback;
+void BLENotifications::setConnectionStateChangedCallback(ble_notifications_state_changed_t cb) {
+    cbStateChanged.store(cb);
 }
-
-void BLENotifications::setNotificationCallback(ble_notification_arrived_t callback)
-{
-	cbNotification = callback;
+void BLENotifications::setNotificationCallback(ble_notification_arrived_t cb) {
+    cbNotification.store(cb);
+    if (client) client->setNotificationArrivedCallback(cb);
 }
-
-void BLENotifications::setRemovedCallback(ble_notification_removed_t callback)
-{
-	cbRemoved = callback;
+void BLENotifications::setRemovedCallback(ble_notification_removed_t cb) {
+    cbRemoved.store(cb);
+    if (client) client->setNotificationRemovedCallback(cb);
 }
-
-void BLENotifications::actionPositive(uint32_t uuid)
-{
-	ESP_LOGI(LOG_TAG, "actionPositive()");
-	client->performAction(uuid, uint8_t(ANCS::NotificationActionPositive));
+void BLENotifications::actionPositive(uint32_t uid) {
+    if (client) client->performAction(uid, ANCS::NotificationActionPositive);
 }
-
-void BLENotifications::actionNegative(uint32_t uuid)
-{
-	ESP_LOGI(LOG_TAG, "actionNegative()");
-	client->performAction(uuid, uint8_t(ANCS::NotificationActionNegative));
+void BLENotifications::actionNegative(uint32_t uid) {
+    if (client) client->performAction(uid, ANCS::NotificationActionNegative);
 }
-
-void BLENotifications::startAdvertising()
-{
-	ESP_LOGI(LOG_TAG, "startAdvertising()");
-
-	// Start soliciting the Apple ANCS service and make the device visible to searches on iOS (from Apple ANCS documentation)
-	BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
-
-	if (isAdvertising == true)
-	{
-		// Stopping it without checking first seems to cause failures to advertise without debugging on.
-		// There is no way to query the BLEAdvertising object to see if it is advertising, so we keep a variable.
-		pAdvertising->stop();
-	}
-
-	BLEAdvertisementData oAdvertisementData = BLEAdvertisementData();
-	oAdvertisementData.setFlags(0x01);
-
-#ifdef BLE_LIB_HAS_SERVICE_SOLICITATION
-	oAdvertisementData.setServiceSolicitation(ANCSBLEClient::getAncsServiceUUID());
-#else
-	setServiceSolicitation(oAdvertisementData, ANCSBLEClient::getAncsServiceUUID());
-#endif
-
-	pAdvertising->setAdvertisementData(oAdvertisementData);
-
-	// Set security
-	BLESecurity *pSecurity = new BLESecurity();
-	pSecurity->setAuthenticationMode(ESP_LE_AUTH_REQ_SC_BOND);
-	pSecurity->setCapability(ESP_IO_CAP_OUT);
-	pSecurity->setInitEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
-
-	// Start advertising
-	pAdvertising->start();
-	isAdvertising = true;
-
-	ESP_LOGD(LOG_TAG, "Advertising started!");
+void BLENotifications::startAdvertising() {
+    if (!begun || stopped.load()) return;
+    auto *advertising = NimBLEDevice::getAdvertising();
+    if (isAdvertising.exchange(false)) advertising->stop();
+    NimBLEAdvertisementData data;
+    data.setFlags(0x06); // General discoverable, BR/EDR unsupported.
+    // ANCS 128-bit service solicitation in Bluetooth little-endian wire order.
+    const uint8_t solicitation[] = {0x11, 0x15, 0xD0, 0x00, 0x2D, 0x12,
+        0x1E, 0x4B, 0x0F, 0xA4, 0x99, 0x4E, 0xCE, 0xB5,
+        0x31, 0xF4, 0x05, 0x79};
+    data.addData(solicitation, sizeof(solicitation));
+    advertising->setAdvertisementData(data);
+    // Scan response keeps the name separate from the 31-byte primary payload.
+    NimBLEAdvertisementData scan;
+    scan.setName(deviceName);
+    advertising->setScanResponseData(scan);
+    advertising->enableScanResponse(true);
+    if (!advertising->start()) {
+        ESP_LOGE(TAG, "Advertising failed");
+        return;
+    }
+    isAdvertising.store(true);
 }
-
-#ifndef BLE_LIB_HAS_SERVICE_SOLICITATION
-void setServiceSolicitation(BLEAdvertisementData &advertisementData, BLEUUID uuid)
-{
-	char cdata[2];
-	switch (uuid.bitSize())
-	{
-	case 16:
-	{
-		// [Len] [0x14] [UUID16] data
-		cdata[0] = 3;
-		cdata[1] = ESP_BLE_AD_TYPE_SOL_SRV_UUID; // 0x14
-		advertisementData.addData(String(cdata, 2) + String((char *)&uuid.getNative()->uuid.uuid16, 2));
-		break;
-	}
-
-	case 128:
-	{
-		// [Len] [0x15] [UUID128] data
-		cdata[0] = 17;
-		cdata[1] = ESP_BLE_AD_TYPE_128SOL_SRV_UUID; // 0x15
-		advertisementData.addData(String(cdata, 2) + String((char *)uuid.getNative()->uuid.uuid128, 16));
-		break;
-	}
-
-	default:
-		return;
-	}
-}
-#endif

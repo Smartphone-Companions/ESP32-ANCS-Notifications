@@ -1,280 +1,247 @@
-// Based on the ANCS work of https://github.com/S-March and the CarWatch project
-
-#include "ble_security.h"
+// Based on the original Smartphone Companions ANCS library. GPL-3.0.
 #include "ancs_ble_client.h"
-#include "ancs_notification_queue.h"
-
-#include "BLEAddress.h"
-#include "BLEDevice.h"
-#include "BLEClient.h"
-#include "BLEUtils.h"
-#include "BLE2902.h"
-
+#include "NimBLEDevice.h"
+#include "NimBLEClient.h"
 #include "esp_log.h"
+#include <cstring>
+#include <Arduino.h>
 
-#include <Arduino.h> // Only for development
+static const char *TAG = "ANCS";
+ANCSBLEClient *ANCSBLEClient::instance = nullptr;
+static const NimBLEUUID serviceUUID("7905F431-B5CE-4E99-A40F-4B1E122D00D0");
+static const NimBLEUUID sourceUUID("9FBF120D-6301-42D9-8C58-25E699A21DBD");
+static const NimBLEUUID controlUUID("69D1D8F3-45E1-49A8-9821-9BBDFDAAD9D9");
+static const NimBLEUUID dataUUID("22EAC6E9-24D6-4BB5-BE44-B36ACE7C7BFB");
 
-static char LOG_TAG[] = "ANCSBLEClient";
-
-// Fixed service IDs for the Apple ANCS service
-const BLEUUID notificationSourceCharacteristicUUID("9FBF120D-6301-42D9-8C58-25E699A21DBD");
-const BLEUUID controlPointCharacteristicUUID("69D1D8F3-45E1-49A8-9821-9BBDFDAAD9D9");
-const BLEUUID dataSourceCharacteristicUUID("22EAC6E9-24D6-4BB5-BE44-B36ACE7C7BFB");
-const BLEUUID ancsServiceUUID("7905F431-B5CE-4E99-A40F-4B1E122D00D0");
-
-static ANCSBLEClient *sharedInstance;
-
-static void dataSourceNotifyCallback(
-		BLERemoteCharacteristic *pDataSourceCharacteristic,
-		uint8_t *pData,
-		size_t length,
-		bool isNotify)
-{
-	ESP_LOGD(LOG_TAG, "dataSourceNotifyCallback");
-	sharedInstance->onDataSourceNotify(pDataSourceCharacteristic, pData, length, isNotify);
+static void dataNotify(NimBLERemoteCharacteristic *, uint8_t *data, size_t size, bool) {
+    if (ANCSBLEClient::instance) ANCSBLEClient::instance->receive(true, data, size);
+}
+static void sourceNotify(NimBLERemoteCharacteristic *, uint8_t *data, size_t size, bool) {
+    if (ANCSBLEClient::instance) ANCSBLEClient::instance->receive(false, data, size);
 }
 
-static void notificationSourceNotifyCallback(
-		BLERemoteCharacteristic *pNotificationSourceCharacteristic,
-		uint8_t *pData,
-		size_t length,
-		bool isNotify)
-{
-	ESP_LOGD(LOG_TAG, "notificationSourceNotifyCallback");
-	sharedInstance->onNotificationSourceNotify(pNotificationSourceCharacteristic, pData, length, isNotify);
+ANCSBLEClient::ANCSBLEClient() {
+    packets = xQueueCreate(24, sizeof(Packet));
+    events = xQueueCreate(128, sizeof(SmallPacket));
+    finished = xSemaphoreCreateBinary();
 }
-
-ANCSBLEClient::ANCSBLEClient()
-		: notificationCB(nullptr), removedCB(nullptr), pControlPointCharacteristic(nullptr)
-{
-	assert(sharedInstance == nullptr);
-	sharedInstance = this;
-	notificationQueue = new ANCSNotificationQueue();
+ANCSBLEClient::~ANCSBLEClient() {
+    // Owner must stop the worker and deinitialize BLE before destroying us.
+    if (packets) vQueueDelete(packets);
+    if (events) vQueueDelete(events);
+    if (finished) vSemaphoreDelete(finished);
+    if (instance == this) instance = nullptr;
 }
+NimBLEUUID ANCSBLEClient::getAncsServiceUUID() { return serviceUUID; }
 
-ANCSBLEClient::~ANCSBLEClient()
-{
-	sharedInstance = nullptr;
+bool ANCSBLEClient::start() {
+    if (instance || !packets || !events || !finished) return false;
+    instance = this;
+    stopping.store(false);
+    // No core affinity: valid on single-core C3 and dual-core ESP32 alike.
+    if (xTaskCreate(taskEntry, "ANCS", 8192, this, 2, &task) != pdPASS) {
+        instance = nullptr;
+        return false;
+    }
+    return true;
 }
-
-void ANCSBLEClient::startClientTask(void *params)
-{
-	ESP_LOGD(LOG_TAG, "Starting client");
-	const BLEAddress *address = (BLEAddress *)params;
-	sharedInstance->setup(address);
-
-	ANCSNotificationQueue *queue = sharedInstance->notificationQueue;
-	while (1)
-	{
-		if (queue->pendingNotificationExists())
-		{
-			Notification pending = queue->getNextPendingNotification();
-			ESP_LOGD(LOG_TAG, "retriveNotificationData: %d", pending.uuid);
-			sharedInstance->retrieveExtraNotificationData(pending);
-		}
-		delay(500);
-	}
+bool ANCSBLEClient::stop() {
+    if (!task) return true;
+    if (xTaskGetCurrentTaskHandle() == task) return false;
+    stopping.store(true);
+    linked.store(false);
+    // Do not force-delete a task while it owns BLE stack locks.
+    if (xSemaphoreTake(finished, pdMS_TO_TICKS(15000)) != pdTRUE) return false;
+    task = nullptr;
+    return true;
 }
-
-void ANCSBLEClient::setup(const BLEAddress *address)
-{
-	BLEClient *pClient = BLEDevice::createClient();
-	BLEDevice::setSecurityCallbacks(new NotificationSecurityCallbacks()); // @todo memory leak?
-
-	BLESecurity *pSecurity = new BLESecurity();
-	pSecurity->setAuthenticationMode(ESP_LE_AUTH_REQ_SC_BOND);
-	pSecurity->setCapability(ESP_IO_CAP_IO);
-	pSecurity->setRespEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
-	// Connect to the remote BLE Server.
-	if (!pClient->connect(*address))
-	{
-		ESP_LOGW(LOG_TAG, "Failed to connect to remote BLE server.");
-		return;
-	}
-
-	/** BEGIN ANCS SERVICE **/
-	// Obtain a reference to the service we are after in the remote BLE server.
-	BLERemoteService *pAncsService = pClient->getService(ancsServiceUUID);
-	if (pAncsService == nullptr)
-	{
-		ESP_LOGW(LOG_TAG, "Failed to find service UUID ancsServiceUUID.");
-		return;
-	}
-	// Obtain a reference to the characteristic in the service of the remote BLE server.
-	BLERemoteCharacteristic *pNotificationSourceCharacteristic = pAncsService->getCharacteristic(notificationSourceCharacteristicUUID);
-	if (pNotificationSourceCharacteristic == nullptr)
-	{
-		ESP_LOGW(LOG_TAG, "Failed to find characteristic UUID notificationSourceCharacteristicUUID");
-		return;
-	}
-	// Obtain a reference to the characteristic in the service of the remote BLE server.
-	pControlPointCharacteristic = pAncsService->getCharacteristic(controlPointCharacteristicUUID);
-	if (pControlPointCharacteristic == nullptr)
-	{
-		ESP_LOGW(LOG_TAG, "Failed to find characteristic UUID: controlPointCharacteristicUUID");
-		return;
-	}
-	// Obtain a reference to the characteristic in the service of the remote BLE server.
-	BLERemoteCharacteristic *pDataSourceCharacteristic = pAncsService->getCharacteristic(dataSourceCharacteristicUUID);
-	if (pDataSourceCharacteristic == nullptr)
-	{
-		ESP_LOGW(LOG_TAG, "Failed to find characteristic UUID dataSourceCharacteristicUUID");
-		return;
-	}
-
-	const uint8_t v[] = {0x1, 0x0};
-	pDataSourceCharacteristic->registerForNotify(dataSourceNotifyCallback);
-	pDataSourceCharacteristic->getDescriptor(BLEUUID((uint16_t)0x2902))->writeValue((uint8_t *)v, 2, true);
-	pNotificationSourceCharacteristic->registerForNotify(notificationSourceNotifyCallback);
-	pNotificationSourceCharacteristic->getDescriptor(BLEUUID((uint16_t)0x2902))->writeValue((uint8_t *)v, 2, true);
+void ANCSBLEClient::connected(uint16_t handle) {
+    connectionHandle.store(handle);
+    authentication.store(0);
+    generation.fetch_add(1);
+    linked.store(true);
 }
-
-BLEUUID ANCSBLEClient::getAncsServiceUUID()
-{
-	return ancsServiceUUID;
+void ANCSBLEClient::disconnected() {
+    linked.store(false);
+    authentication.store(0);
 }
-
-void ANCSBLEClient::setNotificationArrivedCallback(ble_notification_arrived_t cbNotification)
-{
-	notificationCB = cbNotification;
+void ANCSBLEClient::authenticated(bool success) { authentication.store(success ? 1 : -1); }
+bool ANCSBLEClient::active(uint32_t g) const {
+    return !stopping.load() && linked.load() && generation.load() == g;
 }
-
-void ANCSBLEClient::setNotificationRemovedCallback(ble_notification_removed_t cbNotification)
-{
-	removedCB = cbNotification;
+void ANCSBLEClient::receive(bool dataSource, const uint8_t *data, size_t length) {
+    if (!linked.load() || stopping.load()) return;
+    if (!data || length == 0 || length > sizeof(Packet::data)) {
+        overflow.store(true);
+        return;
+    }
+    if (!dataSource) {
+        if (length != 8) return;
+        SmallPacket event{};
+        event.generation = generation.load();
+        event.kind = Source;
+        event.length = length;
+        memcpy(event.data, data, length);
+        if (xQueueSend(events, &event, 0) != pdTRUE) overflow.store(true);
+        return;
+    }
+    Packet packet{};
+    packet.generation = generation.load();
+    packet.kind = Data;
+    packet.length = length;
+    memcpy(packet.data, data, length);
+    if (xQueueSend(packets, &packet, 0) != pdTRUE) overflow.store(true);
 }
-
-void ANCSBLEClient::retrieveExtraNotificationData(Notification &pending)
-{
-	uint8_t uuid[4];
-	uint32_t notifyUUID = pending.uuid;
-	uuid[0] = notifyUUID;
-	uuid[1] = notifyUUID >> 8;
-	uuid[2] = notifyUUID >> 16;
-	uuid[3] = notifyUUID >> 24;
-
-	bool notificationAlreadyInQueue = notificationQueue->contains(pending.uuid);
-	if (notificationAlreadyInQueue == false)
-	{
-		notificationQueue->addNotification(notifyUUID, pending, isIncomingCall(pending));
-	}
-
-	const uint8_t vIdentifier[] = {0x0, uuid[0], uuid[1], uuid[2], uuid[3], ANCS::NotificationAttributeIDAppIdentifier};
-	pControlPointCharacteristic->writeValue((uint8_t *)vIdentifier, 6, true);
-	const uint8_t vTitle[] = {0x0, uuid[0], uuid[1], uuid[2], uuid[3], ANCS::NotificationAttributeIDTitle, 0x0, 0x10};
-	pControlPointCharacteristic->writeValue((uint8_t *)vTitle, 8, true);
-	const uint8_t vMessage[] = {0x0, uuid[0], uuid[1], uuid[2], uuid[3], ANCS::NotificationAttributeIDMessage, 0x0, 0x10};
-	pControlPointCharacteristic->writeValue((uint8_t *)vMessage, 8, true);
-	const uint8_t vDate[] = {0x0, uuid[0], uuid[1], uuid[2], uuid[3], ANCS::NotificationAttributeIDDate};
-	pControlPointCharacteristic->writeValue((uint8_t *)vDate, 6, true);
+void ANCSBLEClient::performAction(uint32_t uid, uint8_t action) {
+    if (!linked.load() || stopping.load() || action > 1) return;
+    SmallPacket packet{};
+    packet.generation = generation.load();
+    packet.kind = Action;
+    packet.length = 6;
+    packet.data[0] = ANCS::CommandIDPerformNotificationAction;
+    for (unsigned i = 0; i < 4; ++i) packet.data[i + 1] = uid >> (8 * i);
+    packet.data[5] = action;
+    if (xQueueSend(events, &packet, 0) != pdTRUE) ESP_LOGW(TAG, "Action queue full");
 }
-
-void ANCSBLEClient::onDataSourceNotify(
-		BLERemoteCharacteristic *pNotificationSourceCharacteristic,
-		uint8_t *pData,
-		size_t length,
-		bool isNotify)
-{
-	std::string message;
-
-	uint32_t messageId = pData[4];
-	messageId = messageId << 8 | pData[3];
-	messageId = messageId << 16 | pData[2];
-	messageId = messageId << 24 | pData[1];
-
-	for (int i = 8; i < length; i++)
-	{
-		message += (char)pData[i];
-	}
-
-	ESP_LOGD(LOG_TAG, "ID: %d raw message: %s type==%d", messageId, message.c_str(), pData[5]);
-
-	Notification *notification = notificationQueue->getNotification(messageId);
-
-	switch (pData[5])
-	{
-	case ANCS::NotificationAttributeIDAppIdentifier:
-		notification->type = message;
-		ESP_LOGD(LOG_TAG, "got type: %s", message.c_str());
-		break;
-	case 0x1:
-		notification->title = message;
-		ESP_LOGD(LOG_TAG, "got title: %s", message.c_str());
-		break;
-	case 0x3:
-		notification->message = message;
-		ESP_LOGD(LOG_TAG, "got message: %s", message.c_str());
-		break;
-	}
-	if (!notification->title.empty() && !notification->message.empty())
-	{
-		if (notificationCB && notification->isComplete == false)
-		{
-			ESP_LOGI(LOG_TAG, "got a full notification: %s - %s ", notification->title.c_str(), notification->message.c_str());
-			const ArduinoNotification arduinoNotification = ArduinoNotification(*notification);
-			notificationCB(&arduinoNotification, notification);
-		}
-		notification->isComplete = true;
-	}
+void ANCSBLEClient::taskEntry(void *self) {
+    auto *client = static_cast<ANCSBLEClient *>(self);
+    client->run();
+    xSemaphoreGive(client->finished);
+    vTaskDelete(nullptr);
 }
-
-bool ANCSBLEClient::isIncomingCall(const Notification &notification) const
-{
-	// @todo detect if it is a FaceTime or call by app? Or is category sufficient?
-	return notification.category == CategoryIDIncomingCall;
+void ANCSBLEClient::reset() {
+    ready = false; waiting = false; cancelled = false;
+    control = nullptr;
+    pending.clear(); cache.clear();
+    response.begin(0);
 }
-
-void ANCSBLEClient::onNotificationSourceNotify(
-		BLERemoteCharacteristic *pNotificationSourceCharacteristic,
-		uint8_t *pData,
-		size_t length,
-		bool isNotify)
-{
-	uint32_t messageId;
-
-	messageId = pData[7];
-	messageId = messageId << 8 | pData[6];
-	messageId = messageId << 16 | pData[5];
-	messageId = messageId << 24 | pData[4];
-
-	if (pData[0] == ANCS::EventIDNotificationRemoved)
-	{
-		ESP_LOGI(LOG_TAG, "notification removed: %d", messageId);
-
-		Notification *notification = notificationQueue->getNotification(messageId);
-
-		if (isIncomingCall(*notification))
-		{
-			notificationQueue->addNotification(messageId, *notification, false);
-			notificationQueue->removeCallNotification();
-		}
-
-		if (removedCB)
-		{
-			const ArduinoNotification arduinoNotification = ArduinoNotification(*notification);
-			removedCB(&arduinoNotification, notification);
-		}
-	}
-	else if (pData[0] == ANCS::EventIDNotificationAdded)
-	{
-		ESP_LOGI(LOG_TAG, "notification added, type: %d", pData[2]);
-		Notification pending;
-		pending.uuid = messageId;
-		pending.eventFlags = pData[1];
-		pending.category = NotificationCategory(pData[2]);
-		pending.categoryCount = pData[3];
-		notificationQueue->addPendingNotification(pending);
-	}
+void ANCSBLEClient::fail(const char *reason) {
+    if (!active(session)) return; // An old session must not disconnect a new peer.
+    ESP_LOGW(TAG, "%s; reconnect to retry", reason);
+    ready = false;
+    linked.store(false);
+    NimBLEDevice::getServer()->disconnect(connectionHandle.load());
 }
-
-void ANCSBLEClient::performAction(uint32_t notifyUUID, uint8_t actionID)
-{
-	uint8_t uuid[4];
-	uuid[0] = notifyUUID;
-	uuid[1] = notifyUUID >> 8;
-	uuid[2] = notifyUUID >> 16;
-	uuid[3] = notifyUUID >> 24;
-
-	const uint8_t vPerformAction[] = {ANCS::CommandIDPerformNotificationAction, uuid[0], uuid[1], uuid[2], uuid[3], actionID};
-	pControlPointCharacteristic->writeValue((uint8_t *)vPerformAction, (sizeof(vPerformAction) / sizeof(vPerformAction[0])), true);
+bool ANCSBLEClient::setup(uint32_t g) {
+    if (!active(g)) return false;
+    // iPhone is the GAP central; ESP32 is the peripheral AND a GATT client.
+    // Attach to the existing link. Never call connect() back to the iPhone.
+    bleClient = NimBLEDevice::getServer()->getClient(connectionHandle.load());
+    if (!bleClient || !active(g)) return false;
+    if (bleClient->getConnInfo().isEncrypted()) authentication.store(1);
+    else if (!NimBLEDevice::startSecurity(connectionHandle.load())) return false;
+    const uint32_t started = millis();
+    while (active(g) && authentication.load() == 0 && millis() - started < 30000) delay(20);
+    if (!active(g) || authentication.load() != 1) {
+        ESP_LOGW(TAG, "Pairing failed/timed out. Accept the iPhone pairing prompt.");
+        return false;
+    }
+    // ANCS may appear only after pairing/authorization. Rediscover on every session.
+    NimBLERemoteService *service = nullptr;
+    for (unsigned attempt = 0; active(g) && attempt < 5; ++attempt) {
+        bleClient->getServices(true);
+        service = bleClient->getService(serviceUUID);
+        if (service) break;
+        delay(1000);
+    }
+    if (!service || !active(g)) return false;
+    auto *source = service->getCharacteristic(sourceUUID);
+    auto *data = service->getCharacteristic(dataUUID);
+    control = service->getCharacteristic(controlUUID);
+    if (!source || !data || !control || !source->canNotify() || !data->canNotify() || !control->canWrite()) return false;
+    // Data Source first, then Notification Source; subscribe verifies the CCCD write.
+    if (!data->subscribe(true, dataNotify, true) || !active(g)) return false;
+    if (!source->subscribe(true, sourceNotify, true) || !active(g)) return false;
+    ESP_LOGI(TAG, "ANCS subscribed; waiting for iPhone notifications");
+    return true;
+}
+void ANCSBLEClient::run() {
+    while (!stopping.load()) {
+        const uint32_t g = generation.load();
+        if (linked.load() && g != session) {
+            reset();
+            session = g;
+            overflow.store(false);
+            ready = setup(g);
+            if (!ready && active(g)) fail("ANCS setup failed; enable Share System Notifications on iPhone");
+        }
+        if (!active(session)) reset();
+        if (overflow.exchange(false) && active(session)) fail("BLE receive queue overflow");
+        Packet packet{};
+        SmallPacket event{};
+        const bool gotEvent = xQueueReceive(events, &event, 0) == pdTRUE;
+        if (gotEvent && ready && active(session) && event.generation == session) {
+            packet.generation = event.generation;
+            packet.kind = event.kind;
+            packet.length = event.length;
+            memcpy(packet.data, event.data, event.length);
+            process(packet);
+        }
+        if (xQueueReceive(packets, &packet, gotEvent ? 0 : pdMS_TO_TICKS(20)) == pdTRUE &&
+            ready && active(session) && packet.generation == session) process(packet);
+        if (ready && active(session)) {
+            if (waiting && millis() - requestedAt > 10000) {
+                // A late fragment has no UID header. Reconnect instead of misattributing it.
+                fail("ANCS attribute response timed out");
+            } else if (!waiting && uxQueueMessagesWaiting(packets) == 0 && uxQueueMessagesWaiting(events) == 0) requestNext();
+        }
+    }
+    if (bleClient && bleClient->isConnected()) bleClient->disconnect();
+    reset();
+    // NimBLEServer owns the attached client; leave it alive until BLE deinit.
+}
+void ANCSBLEClient::requestNext() {
+    if (pending.empty() || !control) return;
+    current = pending.front(); pending.pop_front();
+    response.begin(current.uuid);
+    waiting = true; cancelled = false; requestedAt = millis();
+    uint8_t request[] = {0, 0, 0, 0, 0, 0, 1, 0x00, 0x01, 3, 0x00, 0x04};
+    for (unsigned i = 0; i < 4; ++i) request[i + 1] = current.uuid >> (8 * i);
+    // One command, three attributes; at most one response in flight.
+    if (!control->writeValue(request, sizeof(request), true)) fail("ANCS attribute request rejected");
+}
+void ANCSBLEClient::process(const Packet &packet) {
+    const uint8_t *p = packet.data;
+    if (packet.kind == Action) {
+        if (control) {
+            uint8_t command[6]; memcpy(command, p, sizeof(command));
+            if (!control->writeValue(command, sizeof(command), true)) ESP_LOGW(TAG, "Notification action rejected");
+        }
+        return;
+    }
+    if (packet.kind == Data) {
+        if (!waiting) return;
+        const auto result = response.feed(p, packet.length);
+        if (result == ANCSProtocol::Response::Invalid) { fail("Malformed ANCS response"); return; }
+        if (result != ANCSProtocol::Response::Complete) return;
+        waiting = false;
+        if (cancelled) return;
+        current.type = response.app; current.title = response.title; current.message = response.message;
+        current.isComplete = true;
+        if (cache.size() >= 32 && cache.find(current.uuid) == cache.end()) cache.erase(cache.begin());
+        cache[current.uuid] = current;
+        const auto cb = notificationCB.load();
+        if (cb) { const ArduinoNotification n(current); cb(&n, &current); }
+        return;
+    }
+    if (packet.length != 8 || p[0] > ANCS::EventIDNotificationRemoved) return;
+    const uint32_t uid = ANCSProtocol::readLE32(p + 4);
+    Notification notification;
+    notification.uuid = uid; notification.eventFlags = p[1];
+    notification.category = static_cast<NotificationCategory>(p[2]); notification.categoryCount = p[3];
+    // Coalesce queued modifications; retain FIFO order for other notifications.
+    for (auto it = pending.begin(); it != pending.end();) {
+        if (it->uuid == uid) it = pending.erase(it); else ++it;
+    }
+    if (p[0] == ANCS::EventIDNotificationRemoved) {
+        if (waiting && current.uuid == uid) cancelled = true;
+        auto found = cache.find(uid);
+        if (found != cache.end()) { notification = found->second; cache.erase(found); }
+        const auto cb = removedCB.load();
+        if (cb) { const ArduinoNotification n(notification); cb(&n, &notification); }
+    } else {
+        if (waiting && current.uuid == uid) cancelled = true;
+        if (pending.size() >= 128) { fail("Too many pending notifications"); return; }
+        pending.push_back(notification);
+    }
 }

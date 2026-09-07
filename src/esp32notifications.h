@@ -2,6 +2,7 @@
 #define ESP32NOTIFICATIONS_H_
 
 #include <Arduino.h>
+#include <atomic>
 
 #include "ble_notification.h"
 
@@ -31,6 +32,8 @@ public:
 
 public:
     BLENotifications();
+    BLENotifications(const BLENotifications &) = delete;
+    BLENotifications &operator=(const BLENotifications &) = delete;
 
     /**
      * Setup the device to receive BLE notifications.
@@ -46,10 +49,9 @@ public:
     void startAdvertising();
 
     /**
-     * Shutdown BLE and free memory.
-     * Note that currently the BLE library internals do not seem to restore state properly, so the BLE library
-     * cannot be used after a stop.
-     *
+     * Stop the worker and release BLE. Call from loop(), not a callback.
+     * Returns false if shutdown is still pending; retry from loop().
+     * Reboot before initializing again after a successful stop.
      */
     bool stop();
 
@@ -73,15 +75,18 @@ public:
     const char *getNotificationCategoryDescription(NotificationCategory category) const;
 
 private:
-private:
-    ble_notifications_state_changed_t cbStateChanged;
-    ble_notification_arrived_t cbNotification;
-    ble_notification_removed_t cbRemoved;
+    std::atomic<ble_notifications_state_changed_t> cbStateChanged{nullptr};
+    std::atomic<ble_notification_arrived_t> cbNotification{nullptr};
+    std::atomic<ble_notification_removed_t> cbRemoved{nullptr};
 
-    class BLEServer *server;
-    class ANCSBLEClient *client;
+    class NimBLEServer *server = nullptr;
+    class MyServerCallbacks *serverCallbacks = nullptr;
+    class ANCSBLEClient *client = nullptr;
 
-    bool isAdvertising;
+    std::atomic<bool> isAdvertising{false};
+    std::atomic<bool> stopped{false};
+    bool begun = false;
+    std::string deviceName;
 
     friend class MyServerCallbacks; // Allow internal handlers to access the callbacks of the main class
 };

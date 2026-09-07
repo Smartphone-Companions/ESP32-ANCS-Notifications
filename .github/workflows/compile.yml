@@ -1,0 +1,29 @@
+name: Compile and protocol tests
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  protocol:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          c++ -std=c++11 -Wall -Wextra -Werror -fsanitize=address,undefined -Isrc tests/protocol_test.cpp -o /tmp/protocol-test
+          /tmp/protocol-test
+  arduino:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        core: ['3.0.7', '3.3.11']
+        board: [esp32c3, esp32, esp32s3]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+      - name: Install toolchain and pinned BLE dependency
+        run: |
+          arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core install esp32:esp32@${{ matrix.core }} --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli lib install NimBLE-Arduino@2.5.1
+      - name: Compile example
+        run: arduino-cli compile --fqbn esp32:esp32:${{ matrix.board }} --library . examples/ble_connection
